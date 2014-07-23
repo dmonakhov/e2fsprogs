@@ -1,0 +1,22 @@
+
+* IEF files
+
+** [1] Files in directory created sequentiall
+
+*** Consequence:
+    if inodes are not sequentional it is likely to means that rename happened.
+    
+
+
+
+
+* Ideas
+
+** Directory defragmentation
+   Kernel API IOCTL: Logic is very similar to ext4_ext_migrate
+   - alloc temp inode wich same number of blocks
+   - mark directory witch some ro,tag
+   - copy directory content to temp inode
+   - check ro tag enabled, swap i_data block similar migrate_inode ioctl
+
+
