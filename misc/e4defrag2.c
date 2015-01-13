@@ -117,8 +117,9 @@ struct file_handle {
 #endif
 
 static inline int name_to_handle_at(int mdirfd, const char *name,
-                                    struct file_handle *handle, int *mnt_id,
-                                    int flags)
+				struct file_handle *handle,
+				unsigned int *mnt_id,
+				int flags)
 {
         return syscall(__NR_name_to_handle_at, mdirfd, name, handle, mnt_id,
                        flags);
@@ -216,6 +217,7 @@ struct fmap_extent
 	__u32 lblk;	/* logical block */
 	__u64 pblk;	/* physical block */
 };
+
 #define DEFAULT_FMAP_CACHE_SZ 4
 struct fmap_extent_cache
 {
@@ -223,6 +225,7 @@ struct fmap_extent_cache
 	unsigned fec_extents;	/* number of valid entries */
 	struct fmap_extent fec_map[];
 };
+
 struct fmap_extent_stat
 {
 	unsigned hole;  /* Number of holes */
@@ -306,23 +309,24 @@ struct donor_info
 #define GROUP_DIR_CACHE_SZ	32
 struct group_info
 {
-	unsigned long  		flags;
-	struct rb_root 	  	fh_root;
-	struct rb_fhandle 	*fs_head;
-	struct rb_fhandle 	*fs_tail;
-	struct rb_fhandle 	*next;
+	unsigned long		flags;
+	struct rb_root		fh_root;
+	struct rb_fhandle	*fs_head;
+	struct rb_fhandle	*fs_tail;
+	struct rb_fhandle	*next;
 	__u32			ief_local;
 	__u32			ief_inodes;
 	__u32			ief_blocks;
 	__u32			ief_extents;
-	__u64 			mtime;
-	__u64 			ctime;
-	__u64 			atime;
+	__u64			mtime;
+	__u64			ctime;
+	__u64			atime;
 	unsigned		dir_cached;
-	ext2_ino_t 		dir_ino[GROUP_DIR_CACHE_SZ];
-	unsigned char 		dir_rawh[0];
+	ext2_ino_t		dir_ino[GROUP_DIR_CACHE_SZ];
+	unsigned char		dir_rawh[0];
 
 };
+
 enum ief_compact_algo {
 	IEF_SORT_BLOCK = 0,
 	IEF_SORT_INODE,
@@ -355,14 +359,14 @@ struct defrag_context
 	int			ief_inodes;
 	int			ief_i_groups;
 	int			ief_b_groups;
-	int 			ief_compact_algo;
-	unsigned 		ief_force_local ;/* Pack inodes according
+	int			ief_compact_algo;
+	unsigned		ief_force_local ;/* Pack inodes according
 						      to it's metedata */
 	unsigned		ief_reloc_grp_log; /* Relocate  files only
 						      inside that group, usually
 						      inside flexbg */
-	unsigned 		cluster_size;
-	unsigned 		ief_reloc_cluster;
+	unsigned		cluster_size;
+	unsigned		ief_reloc_cluster;
 	unsigned		weight_scale;
 	unsigned		extents_quality;
 };
@@ -372,7 +376,7 @@ static inline __u64 dfx_sz2b(struct defrag_context *dfx, __u64 size)
 	return (size + (1 << dfx->blocksize_bits) -1) >> dfx->blocksize_bits;
 }
 
-df_show_stats()
+void df_show_stats()
 {
 	printf("Inodes  scanned:\t\t%llu \n", dfstat_scanned_inodes);
 	printf("Directories  scanned:\t\t%llu \n", dfstat_scanned_directories);
@@ -431,20 +435,21 @@ static unsigned ul_log2(unsigned long arg)
 #ifdef DEBUG_RB
 static void check_tree_range(struct rb_node *first, struct rb_node *last, const char *msg)
 {
-	struct rb_node *new_node, *node, *next;
+	struct rb_node *node;
 	struct spextent *ext, *old = NULL;
 
 	for (node = first; node && node; node = ext2fs_rb_next(node)) {
 		ext = node_to_spextent(node);
 		if (ext->count == 0) {
 			printf("Tree Error: count is zero\n");
-			printf("extent: %llu -> %llu (%llu)\n", ext->start,
+			printf("extent: %llu -> %llu (%u)\n", ext->start,
 				ext->start + ext->count, ext->count);
 			goto err_out;
 		}
+
 		if (ext->start + ext->count < ext->start) {
 			printf("Tree Error: start or count is crazy\n");
-			printf("extent: %llu -> %llu (%llu)\n", ext->start,
+			printf("extent: %llu -> %llu (%u)\n", ext->start,
 				ext->start + ext->count, ext->count);
 			goto err_out;
 		}
@@ -452,20 +457,21 @@ static void check_tree_range(struct rb_node *first, struct rb_node *last, const 
 		if (old) {
 			if (old->start > ext->start) {
 				printf("Tree Error: start is crazy\n");
-				printf("extent: %llu -> %llu (%llu)\n",
+				printf("extent: %llu -> %llu (%u)\n",
 					old->start, old->start + old->count,
 					old->count);
-				printf("extent next: %llu -> %llu (%llu)\n",
+				printf("extent next: %llu -> %llu (%u)\n",
 					ext->start, ext->start + ext->count,
 					ext->count);
 				goto err_out;
 			}
+
 			if ((old->start + old->count) > ext->start) {
 				printf("Tree Error: extent overlap\n");
-				printf("extent: %llu -> %llu (%llu)\n",
+				printf("extent: %llu -> %llu (%u)\n",
 					old->start, old->start + old->count,
 					old->count);
-				printf("extent next: %llu -> %llu (%llu)\n",
+				printf("extent next: %llu -> %llu (%u)\n",
 					ext->start, ext->start + ext->count,
 					ext->count);
 				goto err_out;
@@ -482,10 +488,12 @@ err_out:
 	print_tree_range(first, last);
 	exit(1);
 }
+
 static void check_tree(struct rb_root *root, const char *msg)
 {
 	check_tree_range(ext2fs_rb_first(root), NULL, msg);
 }
+
 static void check_node(struct rb_node *node, const char* msg)
 {
 	check_tree_range(ext2fs_rb_prev(node) ? ext2fs_rb_prev(node) : node,
@@ -501,8 +509,7 @@ static inline struct spextent* search_spextent(struct rb_node *n, __u64 pblock)
 {
 	struct spextent * ex;
 
-	while (n)
-	{
+	while (n) {
 		ex = node_to_spextent(n);
 		if (pblock < ex->start)
 			n = n->rb_left;
@@ -513,6 +520,7 @@ static inline struct spextent* search_spextent(struct rb_node *n, __u64 pblock)
 			return ex;
 		}
 	}
+
 	return NULL;
 }
 
@@ -522,8 +530,7 @@ static inline struct rb_fhandle* insert_fhandle(struct rb_root *root, struct rb_
 	struct rb_node * parent = NULL;
 	struct rb_fhandle *fh, *new = node_to_fhandle(node);
 
-	while (*p)
-	{
+	while (*p) {
 		parent = *p;
 		fh = node_to_fhandle(parent);
 
@@ -536,6 +543,7 @@ static inline struct rb_fhandle* insert_fhandle(struct rb_root *root, struct rb_
 	}
 	ext2fs_rb_link_node(node, parent, p);
 	ext2fs_rb_insert_color(node, root);
+
 	return NULL;
 }
 
@@ -551,6 +559,7 @@ static errcode_t alloc_fhandle(__u64 start, struct file_handle *fh,
 	dfstat_fhandles++;
 	(*sptr)->start = start;
 	memcpy(((*sptr)->f_handle), fh->f_handle, fh->handle_bytes);
+
 	return 0;
 }
 
@@ -567,19 +576,21 @@ static int __do_open_f_handle(struct defrag_context *dfx, unsigned char *f_handl
 {
 	int ret;
 	struct file_handle *fh;
+
 	fh = malloc(sizeof (struct file_handle) + dfx->root_fhp->handle_bytes);
 	if (!fh) {
-		fprintf(stderr, "%s:  Can not allocate memory errno:%d\n", __func__, errno);
+		fprintf(stderr, "%s: Can not allocate memory errno:%d\n", __func__, errno);
 		return -1;
-	};
+	}
 
 	fh->handle_bytes = dfx->root_fhp->handle_bytes;
 	fh->handle_type = dfx->root_fhp->handle_type;
 	memcpy(fh->f_handle, f_handle, dfx->root_fhp->handle_bytes);
 	ret = open_by_handle_at(dfx->root_fd, fh, flags);
 	if (ret < 0 && verbose)
-		printf("%s:%d open_by_handle_at failed :errno:%d\n", __func__, __LINE__, errno);
+		printf("%s:%d open_by_handle_at failed :errno:%m\n", __func__, __LINE__);
 	free(fh);
+
 	return ret;
 }
 
@@ -594,8 +605,7 @@ static inline struct spextent* insert_spextent(struct rb_root *root, struct rb_n
 	struct rb_node * parent = NULL;
 	struct spextent *ex, *new = node_to_spextent(node);;
 
-	while (*p)
-	{
+	while (*p) {
 		parent = *p;
 		ex = node_to_spextent(parent);
 
@@ -628,7 +638,7 @@ static errcode_t alloc_spextent(__u64 start, __u32 count, struct spextent **sptr
 
 static void fmap_csum_init(ext2_filsys fs, struct stat64 *st,  __u32 *crc)
 {
-	*crc = ext2fs_crc32c_le(fs->csum_seed, (unsigned char *)&st->st_ino, sizeof(st->st_ino));
+	*crc = ext2fs_crc32c_le(0xdeadbeef, (unsigned char *)&st->st_ino, sizeof(st->st_ino));
 	*crc = ext2fs_crc32c_le(*crc, (unsigned char *)&st->st_size, sizeof(st->st_size));
 	*crc = ext2fs_crc32c_le(*crc, (unsigned char *)&st->st_blocks, sizeof(st->st_blocks));
 }
@@ -665,13 +675,12 @@ static errcode_t init_one_group(struct defrag_context *dfx, unsigned long group,
 	offset += group * num;
 
 	if (debug_flag & DBG_BITMAP)
-		printf(" %s grp:%i, num:%lu, off:%lu, ratio:%d \n", __func__,
-		       group, num, offset, ratio);
+		printf(" %s grp:%lu, num:%lu, off:%lu, ratio:%d \n",
+				__func__, group, num, offset, ratio);
 
 	for (i = 0; i < num; i++) {
-		if (in_use(bitmap, i))
-		{
- 			for (j = i; j < num && in_use(bitmap, j); j++);
+		if (in_use(bitmap, i)) {
+			for (j = i; j < num && in_use(bitmap, j); j++);
 
 			retval = alloc_spextent((i + offset)*ratio, (j-i)*ratio,
 						&new);
@@ -680,7 +689,7 @@ static errcode_t init_one_group(struct defrag_context *dfx, unsigned long group,
 
 			se = insert_spextent(&dfx->sp_root, &new->node);
 			if (se) { /* Collision, this should not happen during initialization */
-				fprintf(stderr, "Collision want insert:[%d,%d], exist [%d, %d]\n",
+				fprintf(stderr, "Collision want insert:[%llu,%d], exist [%llu, %d]\n",
 				       se->start, se->count, new->start, new->count);
 				print_tree(&dfx->sp_root);
 				exit(1);
@@ -688,6 +697,8 @@ static errcode_t init_one_group(struct defrag_context *dfx, unsigned long group,
 			i = j;
 		}
 	}
+
+	return 0;
 }
 
 static int __get_inode_fiemap(struct defrag_context *dfx, int fd,
@@ -708,14 +719,15 @@ static int __get_inode_fiemap(struct defrag_context *dfx, int fd,
 
 	fiemap_buf = malloc(fie_buf_size);
 	if (fiemap_buf == NULL) {
-		fprintf(stderr, "%s Can not allocate memory\n", __func__);
+		fprintf(stderr, "%s: Can not allocate memory errno:%d\n", __func__, errno);
 		return -1;
 	}
+
 	if (!(*fec)) {
 		*fec = malloc(sizeof(struct fmap_extent_cache) +
 			      sizeof(struct fmap_extent) * DEFAULT_FMAP_CACHE_SZ);
 		if (!(*fec)) {
-			fprintf(stderr, "%s Can not allocate memory\n", __func__);
+			fprintf(stderr, "%s: Can not allocate memory errno:%d\n", __func__, errno);
 			ret = -1;
 			goto out;
 		}
@@ -742,6 +754,7 @@ static int __get_inode_fiemap(struct defrag_context *dfx, int fd,
 			}
 			goto out;
 		}
+
 		for (i = 0; i < fiemap_buf->fm_mapped_extents; i++) {
 			__u64 lblk = ext_buf[i].fe_logical >> blksz_log;
 			__u64 pblk = ext_buf[i].fe_physical >> blksz_log;
@@ -766,12 +779,12 @@ static int __get_inode_fiemap(struct defrag_context *dfx, int fd,
 
 			if ((*fec)->fec_extents && lblk == lblk_last && pblk == pblk_last) {
 				/* Merge */
-				(*fec)->fec_map[(*fec)->fec_extents -1].len + len;
+				(*fec)->fec_map[(*fec)->fec_extents -1].len += len;
 			} else {
 				/* Add new extent */
-				(*fec)->fec_map[(*fec)->fec_extents].lblk  = lblk;
-				(*fec)->fec_map[(*fec)->fec_extents].pblk  = pblk;
-				(*fec)->fec_map[(*fec)->fec_extents].len  = len;
+				(*fec)->fec_map[(*fec)->fec_extents].lblk = lblk;
+				(*fec)->fec_map[(*fec)->fec_extents].pblk = pblk;
+				(*fec)->fec_map[(*fec)->fec_extents].len = len;
 				(*fec)->fec_extents++;
 				if ((*fec)->fec_extents == (*fec)->fec_size) {
 					/* More space required */
@@ -818,6 +831,7 @@ out:
 		       fest->local_ex, fest->local_sz, fest->group);
 
 	free(fiemap_buf);
+
 	return ret;
 
 }
@@ -845,10 +859,10 @@ static int group_add_ief_candidate(struct defrag_context *dfx, int dirfd, const 
 				   __u32 blocks, __u32 extents, int flags,
 				   struct rb_fhandle **out_fh)
 {
-	int mnt, ret = 0;
+	unsigned int mnt;
+	int ret = 0;
 	struct rb_fhandle *rbfh = NULL;
 	struct file_handle *fhp;
-	dgrp_t dirgrp;
 	errcode_t retval;
 
 	assert(flags & SP_FL_IEF_RELOC);
@@ -857,13 +871,19 @@ static int group_add_ief_candidate(struct defrag_context *dfx, int dirfd, const 
 		dfx->group[group] = malloc(sizeof(struct group_info) +
 					   dfx->root_fhp->handle_bytes * GROUP_DIR_CACHE_SZ);
 		if (!dfx->group[group]) {
-			fprintf(stderr, "Can not allocate memory");
+			fprintf(stderr, "%s: Can not allocate memory errno:%d\n", __func__, errno);
 			return -1;
 		}
 		memset(dfx->group[group], 0, sizeof(struct group_info));
 		dfx->group[group]->fh_root = RB_ROOT;
 	}
+
 	fhp = malloc(sizeof(struct file_handle) + dfx->root_fhp->handle_bytes);
+	if (!fhp) {
+		fprintf(stderr, "%s: Can not allocate memory errno:%d\n", __func__, errno);
+		return -1;
+	}
+
 	memset(fhp, 0, sizeof(*fhp));
 
 	fhp->handle_bytes = dfx->root_fhp->handle_bytes;
@@ -879,6 +899,7 @@ static int group_add_ief_candidate(struct defrag_context *dfx, int dirfd, const 
 		ret = -1;
 		goto free_fh;
 	}
+
 	if (insert_fhandle(&dfx->group[group]->fh_root, &rbfh->node)) {
 		/* Inode is already in the list, likely nlink > 1 */
 		if (debug_flag & DBG_SCAN)
@@ -908,8 +929,10 @@ static int group_add_ief_candidate(struct defrag_context *dfx, int dirfd, const 
 	dfstat_iaf_candidates++;
 
 	*out_fh = rbfh;
+
 free_fh:
 	free(fhp);
+
 	return ret;
 }
 
@@ -921,8 +944,7 @@ static int scan_inode_pass1(struct defrag_context *dfx, int fd,
 	unsigned is_rdonly = 0;
 	struct fmap_extent_stat fest;
 	struct fmap_extent_cache *fec = NULL;
-	struct spextent *se, *prev_se = NULL;
-	__u64 last_pblk, last_lblk;
+	struct spextent *se;
 	dgrp_t ino_grp = e4d_group_of_ino(dfx, stat->st_ino);
 
 	/*
@@ -944,11 +966,12 @@ static int scan_inode_pass1(struct defrag_context *dfx, int fd,
 	}
 
 	if (debug_flag & DBG_SCAN) {
-		printf("%s:%ld inode:%ld mode:%lx mtime: %u old:%d ro:%d\n",
-		       __func__, (long)time_start.tv_sec - (long)older_than,
-		       stat->st_ino, stat->st_mode, stat->st_mtime, is_old,
-		       (stat->st_mode & (S_IXUSR|S_IXGRP|S_IXOTH)) ||
-		       !(stat->st_mode & (S_IWUSR|S_IWGRP|S_IWOTH)));
+		printf("%s:%ld inode:%ld mode:%lx mtime: %lu old:%d ro:%d\n",
+			__func__, (long)time_start.tv_sec - (long)older_than,
+			stat->st_ino, (unsigned long)stat->st_mode,
+			(unsigned long)stat->st_mtime, is_old,
+			(stat->st_mode & (S_IXUSR|S_IXGRP|S_IXOTH)) ||
+			!(stat->st_mode & (S_IWUSR|S_IWGRP|S_IWOTH)));
 	}
 	ret = get_inode_fiemap(dfx, fd, stat, dfx->blocksize_bits, &fec, &fest);
 	if (ret || !fec->fec_extents)
@@ -961,13 +984,14 @@ static int scan_inode_pass1(struct defrag_context *dfx, int fd,
 		if (!se || se->start + se->count < fec->fec_map[i].pblk + fec->fec_map[i].len) {
 			if (debug_flag & DBG_SCAN) {
 				fprintf(stderr, "%s Cache collision for inode:%ld"
-					", lblock:%llu pblock:%llu len:%u. "
+					", lblock:%u pblock:%llu len:%u. "
 					"Skip it...\n", __func__,
 					stat->st_ino, fec->fec_map[i].lblk,
 					fec->fec_map[i].pblk, fec->fec_map[i].len);
 			}
 			break;
 		}
+
 		se->extents++;
 		se->found += fec->fec_map[i].len;
 		if (S_ISDIR(stat->st_mode))
@@ -981,20 +1005,23 @@ static int scan_inode_pass1(struct defrag_context *dfx, int fd,
 		if (fest.frag > 1 )
 			se->iaf_extents++;
 		if (debug_flag & DBG_SCAN) {
-			printf("ino:%ld %llu ->[%llu, %u] EX:%p [%llu, %u]\n", stat->st_ino,
-			       fec->fec_map[i].lblk, fec->fec_map[i].pblk,
-			       fec->fec_map[i].len, se, se->start, se->count);
+			printf("ino:%ld %u ->[%llu, %u] EX:%p [%llu, %u]\n",
+				stat->st_ino, fec->fec_map[i].lblk,
+				fec->fec_map[i].pblk, fec->fec_map[i].len,
+				se, se->start, se->count);
 		}
 	}
+
 	if (debug_flag & DBG_SCAN) {
-		printf("ino:%ld type:%lx sz:%lu blk:%lu extents:%u holes:%u frag:%u\n", stat->st_ino,
-		       stat->st_mode,
-		       stat->st_size / dfx->root_st.st_blksize,
-		       stat->st_blocks / (dfx->root_st.st_blksize >> 9),
-		       fec->fec_extents, fest.hole, fest.frag);
+		printf("ino:%ld type:%lx sz:%lu blk:%lu extents:%u holes:%u frag:%u\n",
+			stat->st_ino, (unsigned long)stat->st_mode,
+			stat->st_size / dfx->root_st.st_blksize,
+			stat->st_blocks / (dfx->root_st.st_blksize >> 9),
+			fec->fec_extents, fest.hole, fest.frag);
 	}
 out:
 	free(fec);
+
 	return 0;
 }
 
@@ -1008,10 +1035,10 @@ out:
  */
 static void group_add_dircache(struct defrag_context *dfx, int dirfd, struct stat64 *stat, const char *name)
 {
-	int i, mnt, ret;
+	unsigned int mnt;
+	int i,ret;
 	struct file_handle *fhp = NULL;
 	dgrp_t grp = e4d_group_of_ino(dfx, stat->st_ino);
-	unsigned char *raw_handle = dfx->group[grp]->dir_rawh;
 
 	if (!dfx->group[grp] ||
 	    dfx->group[grp]->dir_cached == GROUP_DIR_CACHE_SZ)
@@ -1021,7 +1048,13 @@ static void group_add_dircache(struct defrag_context *dfx, int dirfd, struct sta
 		if (dfx->group[grp]->dir_ino[i] == stat->st_ino)
 			return;
 	}
+
 	fhp = malloc(sizeof(struct file_handle) + dfx->root_fhp->handle_bytes);
+	if (!fhp) {
+		fprintf(stderr, "%s: Can not allocate memory errno:%d\n", __func__, errno);
+		exit(1);
+	}
+
 	memset(fhp, 0, sizeof(*fhp));
 
 	fhp->handle_bytes = dfx->root_fhp->handle_bytes;
@@ -1038,7 +1071,6 @@ static void group_add_dircache(struct defrag_context *dfx, int dirfd, struct sta
 	       fhp->f_handle, dfx->root_fhp->handle_bytes);
 	dfx->group[grp]->dir_ino[dfx->group[grp]->dir_cached] = stat->st_ino;
 	dfx->group[grp]->dir_cached++;
-	return;
 }
 
 static int scan_inode_pass3(struct defrag_context *dfx, int fd,
@@ -1050,12 +1082,11 @@ static int scan_inode_pass3(struct defrag_context *dfx, int fd,
 	int ret = 0;
 	int is_old = 0;
 	int is_rdonly = 0;
-	__u64 pos = 0, ief_blocks = 0;
+	__u64 ief_blocks = 0;
 	__u32 ino_flags = 0;
-	__u64  size_blk = dfx_sz2b(dfx, stat->st_size);
-	__u64  used_blk = dfx_sz2b(dfx, stat->st_blocks << 9);
+	__u64 size_blk = dfx_sz2b(dfx, stat->st_size);
+	__u64 used_blk = dfx_sz2b(dfx, stat->st_blocks << 9);
 	dgrp_t ino_grp = e4d_group_of_ino(dfx, stat->st_ino);
-
 
 	if (S_ISDIR(stat->st_mode)) {
 		group_add_dircache(dfx, dirfd, stat, name);
@@ -1094,13 +1125,12 @@ static int scan_inode_pass3(struct defrag_context *dfx, int fd,
 
 	for (i = 0; i < fec->fec_extents; i++) {
 		struct spextent *se;
-		dgrp_t blk_grp = e4d_group_of_blk(dfx, fec->fec_map[i].pblk);
 
 		se = search_spextent(dfx->sp_root.rb_node, fec->fec_map[i].pblk);
 		if (!se || se->start + se->count < fec->fec_map[i].pblk + fec->fec_map[i].len) {
 			if (debug_flag & DBG_SCAN) {
 				fprintf(stderr, "%s Cache collision for inode:%ld"
-					", lblock:%llu pblock:%llu len:%u. "
+					", lblock:%u pblock:%llu len:%u. "
 					"Skip it...\n", __func__,
 					stat->st_ino, fec->fec_map[i].lblk,
 					fec->fec_map[i].pblk, fec->fec_map[i].len);
@@ -1111,6 +1141,7 @@ static int scan_inode_pass3(struct defrag_context *dfx, int fd,
 			ief_blocks += fec->fec_map[i].len;
 		fmap_csum_ext(fec->fec_map + i, &csum);
 	}
+
 	if (fest.local_ex == fec->fec_extents)
 		ino_flags |= SP_FL_LOCAL;
 
@@ -1141,6 +1172,7 @@ static int scan_inode_pass3(struct defrag_context *dfx, int fd,
 			       size_blk, used_blk);
 		}
 	}
+
 	if (ino_flags & SP_FL_IEF_RELOC) {
 		struct stat dst;
 		struct rb_fhandle *rbfh;
@@ -1159,8 +1191,8 @@ static int scan_inode_pass3(struct defrag_context *dfx, int fd,
 	}
 out:
 	free(fec);
-	return ret;
 
+	return ret;
 }
 
 static int scan_one_dentry(struct defrag_context *dfx, int dirfd,
@@ -1174,11 +1206,11 @@ static int scan_one_dentry(struct defrag_context *dfx, int dirfd,
 
 	if (dfx->lost_found_dir[0] != '\0' &&
 	    !memcmp(name, dfx->lost_found_dir, strnlen(dfx->lost_found_dir, PATH_MAX))) {
-		if (debug_flag & DBG_SCAN) {
+		if (debug_flag & DBG_SCAN)
 			printf("%s skip %s", __func__, name);
-		}
 		return 0;
 	}
+
 	fd = openat(dirfd, name, O_RDONLY);
 	if (fd < 0) {
 		if (debug_flag & DBG_SCAN)
@@ -1212,6 +1244,7 @@ static int scan_one_dentry(struct defrag_context *dfx, int dirfd,
 		}
 		goto out;
 	}
+
 	ret = scan_ino_fn(dfx, fd, &stat, dirfd, name);
 	if (ret < 0) {
 		if (debug_flag & DBG_SCAN)
@@ -1221,31 +1254,36 @@ static int scan_one_dentry(struct defrag_context *dfx, int dirfd,
 	dfstat_scanned_files++;
 out:
 	close(fd);
+
 	return 0;
 }
 
-static int scan_one_directory(struct defrag_context * dfx, char *buf, int count,
-			      int dirfd, proc_inode_t scan_fn);
+static int scan_one_directory(struct defrag_context * dfx, char *buf, int count, int dirfd,
+		proc_inode_t scan_fn);
+
 static int walk_subtree(struct defrag_context * dfx, int fd, proc_inode_t scan_fn)
 {
 	struct stat64 stb;
-	int mnt;
 	char *buf;
 	int err = 0;
 	int bufsz;
 	int offset;
 	int space;
 
-	if (fstat64(fd, &stb))
+	if (fstat64(fd, &stb)) {
+		fprintf(stderr, "%s fstat64: %m", __func__);
 		return -1;
+	}
 
 	if (stb.st_dev != dfx->root_st.st_dev)
 		return 0;
 
 	bufsz = stb.st_size + getpagesize();
 	buf = malloc(bufsz);
-	if (buf == NULL)
+	if (!buf) {
+		fprintf(stderr, "%s: Can not allocate memory errno:%d\n", __func__, errno);
 		return -1;
+	}
 
 	offset = 0;
 	space = bufsz;
@@ -1267,6 +1305,7 @@ static int walk_subtree(struct defrag_context * dfx, int fd, proc_inode_t scan_f
 
 		buf = realloc(buf, bufsz*2);
 		if (buf == NULL) {
+			fprintf(stderr, "Can not allocate memory");
 			err = -1;
 			break;
 		}
@@ -1275,45 +1314,48 @@ static int walk_subtree(struct defrag_context * dfx, int fd, proc_inode_t scan_f
 		bufsz *= 2;
 	}
 	err = scan_one_directory(dfx, buf, offset, fd, scan_fn);
+
 scan_error:
 	free(buf);
+
 	return err;
 }
 
-
 /* Directory scanner, dents are stored in the buffer. */
 static int scan_one_directory(struct defrag_context * dfx, char *buf, int count, int dirfd,
-	proc_inode_t scan_fn)
+		proc_inode_t scan_fn)
 {
 	int err = 0;
 	struct linux_dirent64 * de;
 
 	for (de = (struct linux_dirent64*)buf;
-	     (char*)de < buf + count;
-	     de = (struct linux_dirent64 *)((char*)de + de->d_reclen)) {
+			(char*)de < buf + count;
+			de = (struct linux_dirent64 *)((char*)de + de->d_reclen)) {
 
 		if (strcmp(de->d_name, ".") == 0 ||
 		    strcmp(de->d_name, "..") == 0)
 			continue;
 
-		if(de->d_type == DT_DIR || de->d_type == DT_REG) {
-
-			if( de->d_type == DT_DIR) {
+		if (de->d_type == DT_DIR || de->d_type == DT_REG) {
+			if (de->d_type == DT_DIR) {
 				int fd;
+
 				fd = openat(dirfd, de->d_name, O_RDONLY|O_DIRECTORY);
 				if (fd < 0)
-					return fd;
+					return -1;
+
 				err = walk_subtree(dfx, fd, scan_fn);
 				close(fd);
 				if (err)
 					break;
-
 			}
+
 			err = scan_one_dentry(dfx, dirfd, de->d_name, scan_fn);
 			if (err)
 				break;
 		}
 	}
+
 	return err;
 }
 
@@ -1321,10 +1363,10 @@ static int scan_one_directory(struct defrag_context * dfx, char *buf, int count,
  * EXT4_IOC_MOVE_EXT ioctl will want page cache for given inode
  * This is very important for small files, poke readahead.
  */
-static int defrag_fadvise(int fd, loff_t off, loff_t len, int is_sync)
-
+static void defrag_fadvise(int fd, loff_t off, loff_t len, int is_sync)
 {
 	int	sync_flag = SYNC_FILE_RANGE_WRITE;
+
 	if (is_sync)
 		sync_flag |= SYNC_FILE_RANGE_WAIT_BEFORE |
 			    SYNC_FILE_RANGE_WAIT_AFTER;
@@ -1334,11 +1376,11 @@ static int defrag_fadvise(int fd, loff_t off, loff_t len, int is_sync)
 		if (debug_flag & DBG_SCAN)
 			fprintf(stderr, "\tFailed to fadvise");
 	}
+
 	if (posix_fadvise(fd, off, len, POSIX_FADV_WILLNEED) < 0) {
 		if (debug_flag & DBG_SCAN)
 			fprintf(stderr, "\tFailed to fadvise");
 	}
-	return 0;
 }
 
 static int ief_defrag_prep_one(struct defrag_context *dfx, dgrp_t group,
@@ -1347,13 +1389,11 @@ static int ief_defrag_prep_one(struct defrag_context *dfx, dgrp_t group,
 {
 	int i, ret;
 	__u32 csum;
-	__u64 blocks;
 	struct fmap_extent_cache *fec = NULL;
 	struct fmap_extent_stat fest;
 	__u64  size_blk = dfx_sz2b(dfx, stat->st_size);
-	__u64  used_blk = dfx_sz2b(dfx, stat->st_blocks << 9);
 
-	assert(fhandle->flags & (SP_FL_CSUM|SP_FL_FMAP)  != SP_FL_CSUM|SP_FL_FMAP);
+	assert((fhandle->flags & (SP_FL_CSUM|SP_FL_FMAP)) != (SP_FL_CSUM|SP_FL_FMAP));
 
 	ret = get_inode_fiemap(dfx, fd, stat, dfx->blocksize_bits, &fec, &fest);
 	if (ret || !fec->fec_extents)
@@ -1366,6 +1406,7 @@ static int ief_defrag_prep_one(struct defrag_context *dfx, dgrp_t group,
 		if (fhandle->csum != csum)
 			goto changed;
 	}
+
 	if (fhandle->flags & SP_FL_FMAP) {
 		if (fec->fec_extents  != fhandle->fec->fec_extents)
 			goto changed;
@@ -1394,14 +1435,18 @@ static int ief_defrag_prep_one(struct defrag_context *dfx, dgrp_t group,
 		printf("%s Check inode %lu flags:%x, OK...\n",
 		       __func__, stat->st_ino, fhandle->flags);
 
-	return defrag_fadvise(fd, 0, stat->st_size, 0);
+	defrag_fadvise(fd, 0, stat->st_size, 0);
+
+	return 0;
+
 changed:
 
 	if (verbose)
-		printf("%s inode %lu flags:%x changed under us, skip\n",
-		       __func__, fhandle->flags, stat->st_ino);
+		printf("%s inode %u flags:%lx changed under us, skip\n",
+		       __func__, fhandle->flags, (unsigned long) stat->st_ino);
 	fhandle->flags |= SP_FL_IGNORE;
 	free(fec);
+
 	return 0;
 }
 
@@ -1426,6 +1471,10 @@ static void pass1(struct defrag_context *dfx)
 	}
 
 	block_bitmap = malloc(block_nbytes);
+	if (!block_bitmap) {
+		fprintf(stderr, "%s: Can not allocate memory errno:%d\n", __func__, errno);
+		exit(1);
+	}
 
 	first_block = dfx->fs->super->s_first_data_block;
 
@@ -1436,7 +1485,7 @@ static void pass1(struct defrag_context *dfx)
 		if (ext2fs_bg_flags_test(dfx->fs, i, EXT2_BG_BLOCK_UNINIT) ||
 		    !ext2fs_block_bitmap_loc(dfx->fs, i)) {
 			if (debug_flag & DBG_SCAN)
-				printf("Pass1: group %d uninitialized,"
+				printf("Pass1: group %lu uninitialized,"
 				       " skip it...\n", i);
 			blk_itr += dfx->fs->super->s_clusters_per_group;
 			continue;
@@ -1464,8 +1513,7 @@ static void pass1(struct defrag_context *dfx)
 			blk_itr += dfx->fs->super->s_clusters_per_group;
 		}
 	}
-	if (block_bitmap)
-		free(block_bitmap);
+	free(block_bitmap);
 	check_tree(&dfx->sp_root, "pass1:");
 
 	if (verbose)
@@ -1476,7 +1524,6 @@ static void pass1(struct defrag_context *dfx)
 		print_tree(&dfx->sp_root);
 }
 
-
 /*
  * Scan filesystem tree and collect extents ownership statistics.
  * Number of separated file extents covered by this file
@@ -1485,7 +1532,6 @@ static void pass1(struct defrag_context *dfx)
 static void pass2(struct defrag_context *dfx)
 {
 	int err;
-	int tmp = verbose;
 
 	if (verbose)
 		printf("Pass2:  Scan directory hierarchy\n");
@@ -1508,7 +1554,6 @@ static void pass2(struct defrag_context *dfx)
 
 	if (debug_flag & DBG_TREE)
 		print_tree(&dfx->sp_root);
-
 }
 
 /*
@@ -1527,9 +1572,8 @@ static void pass2(struct defrag_context *dfx)
  */
 static void pass3_prep(struct defrag_context *dfx)
 {
-	int i;
 	struct rb_node *node, *cluster_node = NULL;
-	struct spextent *ex, *first_ex = NULL;
+	struct spextent *ex;
 	__u64 cluster_mask = ~((__u64)dfx->cluster_size - 1ULL);
 	__u64 cluster, prev_cluster = 0;
 	__u64 ext_to_move = 0;
@@ -1585,7 +1629,6 @@ static void pass3_prep(struct defrag_context *dfx)
 	check_tree(&dfx->sp_root, __func__);
 	if (debug_flag & DBG_TREE)
 		print_tree(&dfx->sp_root);
-
 }
 
 static void pass3(struct defrag_context *dfx)
@@ -1619,8 +1662,13 @@ static void pass3(struct defrag_context *dfx)
 
 static void release_donor_space(struct donor_info *donor)
 {
-	if (donor->fd != -1)
-		ftruncate(donor->fd, 0);
+	int rc;
+
+	if (donor->fd != -1) {
+		rc = ftruncate(donor->fd, 0);
+		if (rc)
+			fprintf(stderr, "%s: Failef to ftruncate(0): %m", __func__);
+	}
 	free(donor->fec);
 	donor->fec = NULL;
 	donor->length = 0;
@@ -1635,8 +1683,6 @@ static void close_donor(struct donor_info *donor)
 		donor->fd = -1;
 	}
 }
-
-
 
 static int do_alloc_donor_space(struct defrag_context *dfx, dgrp_t group,
 			  struct donor_info *donor, __u64 blocks,
@@ -1660,11 +1706,13 @@ static int do_alloc_donor_space(struct defrag_context *dfx, dgrp_t group,
 			fprintf(stderr, "Can fallocate space for donor file err:%d\n", errno);
 		return ret;
 	}
+
 	ret = fstat64(donor->fd, &stat);
 	if (ret) {
 		fprintf(stderr,	"Error while fstat errno:%d", errno);
 		return ret;
 	}
+
 	ret = get_inode_fiemap(dfx, donor->fd, &stat, dfx->blocksize_bits, &fec, &donor->fest);
 	if (ret || !fec->fec_extents) {
 		goto err;
@@ -1691,18 +1739,17 @@ err:
 	free(fec);
 	return -1;
 }
+
 /* Walk directory cache for a group and try to allocate local donor file */
 static int do_find_donor(struct defrag_context *dfx, dgrp_t group,
 			  struct donor_info *donor, __u64 blocks,
 			  unsigned force_local, unsigned max_frag)
 {
 	int dir, i, ret = 0;
-	struct rb_fhandle *rfh;
 	struct stat64 st;
 	dgrp_t donor_grp;
 	unsigned char *raw_fh = dfx->group[group]->dir_rawh;
 	const char *dfname = ".e4defrag2_donor.tmp";
-
 
 	if (!dfx->group[group])
 		return -1;
@@ -1711,6 +1758,7 @@ static int do_find_donor(struct defrag_context *dfx, dgrp_t group,
 		printf("%s ENTER grp:%u donor_fd:%d blocks:%llu local:%d frag:%u\n",
 		       __func__, group, donor->fd, blocks, force_local, max_frag);
 	}
+
 	for (i = 0; i < dfx->group[group]->dir_cached;
 	     i++, raw_fh += dfx->root_fhp->handle_bytes) {
 		dir = __do_open_f_handle(dfx, raw_fh, O_RDONLY);
@@ -1767,6 +1815,7 @@ static int do_find_donor(struct defrag_context *dfx, dgrp_t group,
 		if (ret)
 			return -1;
 	}
+
 	return -1;
 }
 
@@ -1808,8 +1857,8 @@ static int prepare_donor(struct defrag_context *dfx, dgrp_t group,
 				return ret;
 		}
 	}
-	return -1;
 
+	return -1;
 }
 
 /* FIXME: This check defenitely should be smarter */
@@ -1860,7 +1909,7 @@ static int do_defrag_one(struct defrag_context *dfx, int fd,  struct stat64 *sta
 
 	if (debug_flag & DBG_RT)
 		printf("%s inode:%lld start:%lld eof:%lld donor [%lld, %lld]\n",
-		       __func__, (unsigned long )stat->st_ino,
+		       __func__, (unsigned long long)stat->st_ino,
 		       (unsigned long long)fec->fec_map[0].pblk,
 		       (unsigned long long)eof_lblk,
 		       (unsigned long long)donor->offset,
@@ -1886,6 +1935,7 @@ static int do_defrag_one(struct defrag_context *dfx, int fd,  struct stat64 *sta
 
 	donor->length -= moved;
 	donor->offset += moved;
+
 	return ret;
 }
 /*
@@ -1911,24 +1961,26 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 			fprintf(stderr, "%s: can not open candidate\n", __func__);
 		return 0;
 	}
+
 	if (fstat64(fd, &st2)) {
 		if (debug_flag & DBG_RT)
-			fprintf(stderr, "%s:%d stat failed err:%d\n", __func__,
-				__LINE__, errno);
+			fprintf(stderr, "%s: stat failed err:%d\n", __func__,
+				errno);
 		return 0;
 	}
+
 	if (st2.st_ino != stat->st_ino) {
 		if (debug_flag & DBG_RT)
-			fprintf(stderr, "%s:%d Race while reopen\n", __func__);
+			fprintf(stderr, "%s Race while reopen\n", __func__);
 		return 0;
 	}
+
 	donor.fd = -1;
 	donor.fec = NULL;
 	donor.length = 0;
 	donor.offset = 0;
 
-
-     	/* Force local group for small files
+	/* Force local group for small files
 	 * FIXME: This should be tunable
 	 */
 	force_local = eof_lblk < 16;
@@ -1939,10 +1991,10 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 		       __func__, stat->st_ino, (unsigned long long) eof_lblk,
 		       force_local, fest->frag, fest->local_ex);
 		for (i = 0; i < fec->fec_extents; i++)
-			printf("%llu ->[%llu, %u] EX:%p [%llu, %u]\n",
-			       (unsigned long long)eof_lblk, force_local,
-			       fec->fec_map[i].lblk, fec->fec_map[i].pblk,
-			       fec->fec_map[i].len, fest->local_ex);
+			printf("%llu ->[%u, %u] %llu [%u, %u]\n",
+				eof_lblk, force_local,
+				fec->fec_map[i].lblk, fec->fec_map[i].pblk,
+				fec->fec_map[i].len, fest->local_ex);
 	}
 
 	ret = prepare_donor(dfx, ino_grp, &donor, eof_lblk, force_local, fest->frag / 2);
@@ -1952,6 +2004,7 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 				" file\n", __func__,  ino_grp);
 		return 0;
 	}
+
 	if (debug_flag & DBG_SCAN) {
 		int i;
 		printf("%s FOUND DONOR inode:%ld eof:%llu force_local:%d frag:%u local_ex:%u\n",
@@ -1959,13 +2012,14 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 		       force_local, fest->frag, fest->local_ex);
 
 		for (i = 0; i < donor.fec->fec_extents; i++)
-			printf("%llu ->[%llu, %u] EX:%p [%llu, %u]\n",
+			printf("%llu ->[%u, %u] EX:%llu [%u, %u]\n",
 			       (unsigned long long)eof_lblk, force_local,
 			       donor.fec->fec_map[i].lblk, donor.fec->fec_map[i].pblk,
 			       donor.fec->fec_map[i].len, donor.fest.local_ex);
 	}
 
 	defrag_fadvise(fd, 0 , eof_lblk << dfx->blocksize_bits, 1);
+
 	ret = do_defrag_one(dfx, fd, stat, fec, fest, eof_lblk, &donor);
 	if (!ret) {
 		dfstat_iaf_defragmented++;
@@ -1978,13 +2032,14 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 
 	} else {
 		if (verbose)
-			printf("%s FAIL ino:%lu blocs:%lld frag:%u donor_frag:u\n",
+			printf("%s FAIL ino:%lu blocs:%lld frag:%u donor_frag:%u\n",
 			       __func__, (unsigned long )stat->st_ino,
 			       (unsigned long long)eof_lblk,
 			       fest->frag, donor.fest.frag);
 	}
 	close_donor(&donor);
 	close(fd);
+
 	return ret;
 }
 
@@ -2010,6 +2065,7 @@ static int do_ief_defrag_one(struct defrag_context *dfx, dgrp_t group,
 		rfh->flags |= SP_FL_IGNORE;
 		return 0;
 	}
+
 	ret = fstat64(fd, &st);
 	if (ret) {
 		fprintf(stderr, "Fstat faild with %d\n", errno);
@@ -2017,6 +2073,7 @@ static int do_ief_defrag_one(struct defrag_context *dfx, dgrp_t group,
 		close(fd);
 		return 0;
 	}
+
 	/* Recheck extent tree */
 	ret = get_inode_fiemap(dfx, fd, &st, dfx->blocksize_bits, &fec, &fest);
 	if (ret || !fec->fec_extents)
@@ -2031,6 +2088,7 @@ static int do_ief_defrag_one(struct defrag_context *dfx, dgrp_t group,
 		fec->fec_map[fec->fec_extents -1].len;
 
 	defrag_fadvise(fd, 0 , eof_lblk << dfx->blocksize_bits, 1);
+
 	ret = do_defrag_one(dfx, fd, &st, fec, &fest, eof_lblk, donor);
 	if (!ret) {
 		dfx->group[group]->ief_inodes++;
@@ -2042,6 +2100,7 @@ static int do_ief_defrag_one(struct defrag_context *dfx, dgrp_t group,
 out:
 	free(fec);
 	close(fd);
+
 	return ret;
 }
 
@@ -2080,8 +2139,6 @@ static int ief_defrag_group(struct defrag_context *dfx, dgrp_t idx)
 	struct rb_node *node;
 	struct rb_fhandle *rfh, *prev;
 	struct stat64 st;
-	struct fmap_extent *fec;
-	struct fmap_extent_stat fest;
 	struct donor_info donor;
 	struct group_info * group = dfx->group[idx];
 	__u64 blocks;
@@ -2093,9 +2150,9 @@ static int ief_defrag_group(struct defrag_context *dfx, dgrp_t idx)
 	group->ief_local = 0;
 	group->ief_extents = 0;
 	group->ief_blocks = 0;
-	dfstat_directories += group->dir_cached;
+	dfstat_directories += dfx->group[idx]->dir_cached++;
 
- 	for (node = ext2fs_rb_first(&group->fh_root); node != NULL;
+	for (node = ext2fs_rb_first(&group->fh_root); node != NULL;
 	     node = ext2fs_rb_next(node)) {
 		rfh = node_to_fhandle(node);
 		if (rfh->flags & SP_FL_IGNORE || !(rfh->flags & SP_FL_IEF_RELOC))
@@ -2111,6 +2168,7 @@ static int ief_defrag_group(struct defrag_context *dfx, dgrp_t idx)
 			rfh->flags |= SP_FL_IGNORE;
 			continue;
 		}
+
 		ret = fstat64(fd, &st);
 		if (ret) {
 			fprintf(stderr, "Fstat faild with %d\n", errno);
@@ -2197,11 +2255,13 @@ next_cluster:
 				" file\n", __func__,  idx);
 		return 0;
 	}
+
 	assert (group->next);
 	while (group->next && group->next != prev) {
 		do_ief_defrag_one(dfx, idx, group->next , &donor);
 		group->next = group->next->next;
 	}
+
 	if (group->next)
 		goto next_cluster;
 
@@ -2240,7 +2300,7 @@ static void pass4(struct defrag_context *dfx)
 
 		ret = ief_defrag_group(dfx, i);
 		if (ret) {
-			fprintf(stderr, "Error while defragmentation %u group\n",
+			fprintf(stderr, "%s Error while defragmentation %u group\n",
 				__func__, i);
 			exit(1);
 		}
@@ -2285,6 +2345,14 @@ static void open_device(char *device_name, ext2_filsys *fs)
 static void usage(void)
 {
 	fprintf(stderr, "Usage: %s [-v] [-n] [-d flags] [-t seconds] -t [time]  device root_dir\n", program_name);
+	fprintf(stderr, "\t\t -a: minimal fragment size\n");
+	fprintf(stderr, "\t\t -c: cluster size\n");
+	fprintf(stderr, "\t\t -d: debug flags\n");
+	fprintf(stderr, "\t\t -f: Enable default fleg group optimization\n");
+	fprintf(stderr, "\t\t -F: same as '-f' but provides manual fleg grp log size\n");
+	fprintf(stderr, "\t\t -l: force new blocks only inside single meta group\n");
+	fprintf(stderr, "\t\t -s: scale factor\n");
+	fprintf(stderr, "\t\t -q: defragmentaion quality factor\n");
 	fprintf(stderr, "\t\t -t: interpret inodes which was modified before N second as RO files\n");
 	fprintf(stderr, "\t\t -T: same as '-t' but use absolute value");
 	exit (1);
@@ -2297,8 +2365,6 @@ int main(int argc, char *argv[])
 	char *device_name;
 	char *root_dir;
 	char *end;
-	errcode_t retval;
-	int z;
 	struct file_handle *fhp = NULL;
 	int cluster_size = 1 << 20;
 	int scale = 7;
@@ -2342,8 +2408,8 @@ int main(int argc, char *argv[])
 			if (older_than > time_start.tv_sec) {
 				if (verbose)
 					fprintf(stderr, "WARNING: timestamp is "
-						"at %u seconds in future\n",
-						older_than - time_start.tv_sec);
+						"at %lu seconds in future\n",
+						(unsigned long)older_than - time_start.tv_sec);
 			}
 			break;
 		case 's':
@@ -2389,11 +2455,13 @@ int main(int argc, char *argv[])
 			__func__, root_dir, errno);
 		exit(1);
 	}
+
 	if (fstat64(dfx.root_fd, &dfx.root_st)) {
 		fprintf(stderr, "%s: can fstat root:%s, errno:%d",
 			__func__, root_dir, errno);
 		exit(1);
 	}
+
 	dfx.blocksize_bits = ul_log2(dfx.root_st.st_blksize);
 	if (cluster_size < dfx.root_st.st_blksize) {
 		fprintf(stderr, "defragmentarion cluster can not be less than fs"
@@ -2409,12 +2477,14 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "%s:  Can not allocate memory errno:%d\n", __func__, errno);
 		exit(1);
 	}
+
         fhp->handle_bytes = 0;
         if (name_to_handle_at(dfx.root_fd, ".", fhp,
 			   &dfx.root_mntid, 0) != -1 || errno != EOVERFLOW) {
                 fprintf(stderr, "Unexpected result from name_to_handle_at()\n");
                 exit(1);
         }
+
         if (name_to_handle_at(dfx.root_fd, ".", fhp,
 			   &dfx.root_mntid, 0) < 0) {
                 fprintf(stderr, "Unexpected result from name_to_handle_at()\n");
@@ -2441,7 +2511,12 @@ int main(int argc, char *argv[])
 	dfx.ief_compact_algo = IEF_SORT_FSTREE;
 	nr_grp = (dfx.fs->group_desc_count + (1 << dfx.ief_reloc_grp_log) - 1)
 		>> dfx.ief_reloc_grp_log;
+
 	dfx.group = malloc (sizeof (struct group_info*) * nr_grp);
+	if (!dfx.group) {
+		fprintf(stderr, "%s:  Can not allocate memory errno:%d\n", __func__, errno);
+		exit(1);
+	}
 	memset(dfx.group, 0 , sizeof (struct group_info*) * nr_grp);
 
 	pass1(&dfx);
@@ -2456,5 +2531,6 @@ int main(int argc, char *argv[])
 
 	close(dfx.root_fd);
 	close_device(device_name, dfx.fs);
+
 	return 0;
 }
