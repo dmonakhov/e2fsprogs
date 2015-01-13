@@ -2121,7 +2121,6 @@ static int ief_defrag_group(struct defrag_context *dfx, dgrp_t idx)
 		}
 		ret = ief_defrag_prep_one(dfx, idx, fd, rfh, &st);
 		close(fd);
-		rfh->flags |= SP_FL_IGNORE;
 	}
 	if (debug_flag & DBG_RT) {
 		printf("%s free_b:%u free_i:%u  dir:%u \n", __func__,
@@ -2142,8 +2141,8 @@ static int ief_defrag_group(struct defrag_context *dfx, dgrp_t idx)
 		for (node = ext2fs_rb_first(&group->fh_root); node != NULL;
 		     node = ext2fs_rb_next(node)) {
 			rfh = node_to_fhandle(node);
-			if (!(rfh->flags & SP_FL_IEF_RELOC))
-				break;
+			if (!(rfh->flags & SP_FL_IEF_RELOC) || rfh->flags & SP_FL_IGNORE)
+				continue;
 			if (!prev)
 				group->next = rfh;
 			else
@@ -2157,8 +2156,8 @@ static int ief_defrag_group(struct defrag_context *dfx, dgrp_t idx)
 	case IEF_SORT_FSTREE:
 		prev = NULL;
 		for (rfh = group->fs_head; rfh != NULL; rfh = rfh->fs_next) {
-			if (!(rfh->flags & SP_FL_IEF_RELOC))
-				break;
+			if (!(rfh->flags & SP_FL_IEF_RELOC) || rfh->flags & SP_FL_IGNORE)
+				continue;
 			if (!prev)
 				group->next = rfh;
 			else
@@ -2182,6 +2181,8 @@ next_cluster:
 	blocks = 0;
 	/* Divide inodes in to reallocation clusters */
 	for (rfh = group->next; rfh != NULL; rfh = rfh->next) {
+		assert(!(rfh->flags & SP_FL_IGNORE));
+		assert(rfh->flags & (SP_FL_FMAP | SP_FL_IEF_RELOC));
 		if (blocks >= dfx->ief_reloc_cluster)
 			break;
 		blocks += rfh->fec->fec_map[rfh->fec->fec_extents -1].lblk +
