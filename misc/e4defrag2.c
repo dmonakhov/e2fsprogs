@@ -2469,23 +2469,15 @@ int main(int argc, char *argv[])
 			"block size\n");
 		exit(1);
 	}
-	/*
-	 * Make an initial call to name_to_handle_at() to discover
-	 * the size required for file handle
-	 */
+
+	/* Allocate max possible handle size */
 	fhp = malloc(sizeof(struct file_handle) + MAX_HANDLE_SZ);
 	if (!fhp) {
-		fprintf(stderr, "%s: Can not allocate memory errno:%d\n", __func__, errno);
+		fprintf(stderr, "%s: Can not allocate memory errno:%d\n", program_name, errno);
 		exit(1);
 	}
 
-	fhp->handle_bytes = 0;
-	if (name_to_handle_at(dfx.root_fd, ".", fhp,
-			   &dfx.root_mntid, 0) != -1 || errno != EOVERFLOW) {
-		fprintf(stderr, "Unexpected result from name_to_handle_at()\n");
-		exit(1);
-	}
-
+	fhp->handle_bytes = MAX_HANDLE_SZ;
 	if (name_to_handle_at(dfx.root_fd, ".", fhp,
 			   &dfx.root_mntid, 0) < 0) {
 		fprintf(stderr, "Unexpected result from name_to_handle_at()\n");
