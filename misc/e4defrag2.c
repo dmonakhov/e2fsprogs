@@ -50,16 +50,16 @@ extern int optind;
 #include "nls-enable.h"
 
 #ifndef O_DIRECTORY
-#define O_DIRECTORY     00200000
+#define O_DIRECTORY	00200000
 #endif
 
 struct linux_dirent64
 {
-        __u64           d_ino;
-        __s64           d_off;
-        unsigned short  d_reclen;
-        unsigned char   d_type;
-        char            d_name[0];
+	__u64		d_ino;
+	__s64		d_off;
+	unsigned short	d_reclen;
+	unsigned char	d_type;
+	char		d_name[0];
 };
 
 static long __sys_getdents64(int fd, struct linux_dirent64 * dirp, int count)
@@ -85,7 +85,7 @@ struct move_extent {
 	__u64 moved_len;	/* moved block length */
 };
 
-#define EXT4_IOC_MOVE_EXT      _IOWR('f', 15, struct move_extent)
+#define EXT4_IOC_MOVE_EXT	_IOWR('f', 15, struct move_extent)
 #endif
 
 
@@ -93,16 +93,16 @@ struct move_extent {
 #define HANDLE_LINUX_H
 #endif
 #ifndef AT_EMPTY_PATH
-#define AT_EMPTY_PATH           0x1000
+#define AT_EMPTY_PATH		0x1000
 #endif
 
 #ifndef MAX_HANDLE_SZ
 #define MAX_HANDLE_SZ 128
 struct file_handle {
-        __u32 handle_bytes;
-        int handle_type;
-        /* file identifier */
-        unsigned char f_handle[0];
+	__u32 handle_bytes;
+	int handle_type;
+	/* file identifier */
+	unsigned char f_handle[0];
 };
 
 #if defined(__i386__)
@@ -121,14 +121,14 @@ static inline int name_to_handle_at(int mdirfd, const char *name,
 				unsigned int *mnt_id,
 				int flags)
 {
-        return syscall(__NR_name_to_handle_at, mdirfd, name, handle, mnt_id,
-                       flags);
+	return syscall(__NR_name_to_handle_at, mdirfd, name, handle, mnt_id,
+			flags);
 }
 
 static inline int open_by_handle_at(int mdirfd, struct file_handle *handle,
-                                    int flags)
+				    int flags)
 {
-        return syscall(__NR_open_by_handle_at, mdirfd, handle, flags);
+	return syscall(__NR_open_by_handle_at, mdirfd, handle, flags);
 }
 #endif
 
@@ -422,14 +422,14 @@ static void print_tree(struct rb_root *root)
 
 static unsigned ul_log2(unsigned long arg)
 {
-        unsigned l = 0;
+	unsigned l = 0;
 
-        arg >>= 1;
-        while (arg) {
-                l++;
-                arg >>= 1;
-        }
-        return l;
+	arg >>= 1;
+	while (arg) {
+		l++;
+		arg >>= 1;
+	}
+	return l;
 }
 
 #ifdef DEBUG_RB
@@ -1564,7 +1564,7 @@ static void pass2(struct defrag_context *dfx)
  * ZFS is known to use lru list but where is no speciffic info about this.
  *
  *  Pase3_prep simply scan cached extents and:
- * 	a) Divide extents in to defragmentation clusters.
+ *      a) Divide extents in to defragmentation clusters.
  *      b) Calculate weight and quality of each cluster
  *      d) If defrag cluster is good enough mark all extents in that cluster as
  *	   candidates for ief relocation
@@ -2478,18 +2478,18 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-        fhp->handle_bytes = 0;
-        if (name_to_handle_at(dfx.root_fd, ".", fhp,
+	fhp->handle_bytes = 0;
+	if (name_to_handle_at(dfx.root_fd, ".", fhp,
 			   &dfx.root_mntid, 0) != -1 || errno != EOVERFLOW) {
-                fprintf(stderr, "Unexpected result from name_to_handle_at()\n");
-                exit(1);
-        }
+		fprintf(stderr, "Unexpected result from name_to_handle_at()\n");
+		exit(1);
+	}
 
-        if (name_to_handle_at(dfx.root_fd, ".", fhp,
+	if (name_to_handle_at(dfx.root_fd, ".", fhp,
 			   &dfx.root_mntid, 0) < 0) {
-                fprintf(stderr, "Unexpected result from name_to_handle_at()\n");
-                exit(1);
-        }
+		fprintf(stderr, "Unexpected result from name_to_handle_at()\n");
+		exit(1);
+	}
 
 	/* Finaly init of defrag context */
 	dfx.root_fhp = fhp;
