@@ -2346,16 +2346,16 @@ static void open_device(char *device_name, ext2_filsys *fs)
 static void usage(void)
 {
 	fprintf(stderr, "Usage: %s [-v] [-n] [-d flags] [-t seconds] -t [time]  device root_dir\n", program_name);
-	fprintf(stderr, "\t\t -a: minimal fragment size\n");
-	fprintf(stderr, "\t\t -c: cluster size\n");
-	fprintf(stderr, "\t\t -d: debug flags\n");
-	fprintf(stderr, "\t\t -f: Enable default fleg group optimization\n");
-	fprintf(stderr, "\t\t -F: same as '-f' but provides manual fleg grp log size\n");
-	fprintf(stderr, "\t\t -l: force new blocks only inside single meta group\n");
-	fprintf(stderr, "\t\t -s: scale factor\n");
-	fprintf(stderr, "\t\t -q: defragmentaion quality factor\n");
-	fprintf(stderr, "\t\t -t: interpret inodes which was modified before N second as RO files\n");
-	fprintf(stderr, "\t\t -T: same as '-t' but use absolute value");
+	fprintf(stderr, "\t-a: minimal fragment size\n");
+	fprintf(stderr, "\t-c: cluster size\n");
+	fprintf(stderr, "\t-d: debug flags\n");
+	fprintf(stderr, "\t-f: Enable default fleg group optimization\n");
+	fprintf(stderr, "\t-F: same as '-f' but provides manual fleg grp log size\n");
+	fprintf(stderr, "\t-l: force new blocks only inside single meta group\n");
+	fprintf(stderr, "\t-s: scale factor\n");
+	fprintf(stderr, "\t-q: defragmentaion quality factor\n");
+	fprintf(stderr, "\t-t: interpret inodes which was modified before N second as RO files\n");
+	fprintf(stderr, "\t-T: same as '-t' but use absolute value");
 	exit (1);
 }
 
