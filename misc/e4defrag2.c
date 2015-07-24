@@ -118,7 +118,7 @@ struct file_handle {
 
 static inline int name_to_handle_at(int mdirfd, const char *name,
 				struct file_handle *handle,
-				unsigned int *mnt_id,
+				int *mnt_id,
 				int flags)
 {
 	return syscall(__NR_name_to_handle_at, mdirfd, name, handle, mnt_id,
@@ -342,7 +342,7 @@ struct defrag_context
 	struct stat64		root_st;
 	unsigned		blocksize_bits;
 	struct file_handle	*root_fhp;
-	unsigned int		root_mntid;
+	int			root_mntid;
 	unsigned int		ro_fs;
 
 	/* fs-tree cache info */
@@ -859,7 +859,7 @@ static int group_add_ief_candidate(struct defrag_context *dfx, int dirfd, const 
 				   __u32 blocks, __u32 extents, int flags,
 				   struct rb_fhandle **out_fh)
 {
-	unsigned int mnt;
+	int mnt;
 	int ret = 0;
 	struct rb_fhandle *rbfh = NULL;
 	struct file_handle *fhp;
@@ -1036,7 +1036,7 @@ out:
  */
 static void group_add_dircache(struct defrag_context *dfx, int dirfd, struct stat64 *stat, const char *name)
 {
-	unsigned int mnt;
+	int mnt;
 	int i,ret;
 	struct file_handle *fhp = NULL;
 	dgrp_t grp = e4d_group_of_ino(dfx, stat->st_ino);
