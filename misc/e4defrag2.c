@@ -360,9 +360,9 @@ struct defrag_context
 	int			ief_i_groups;
 	int			ief_b_groups;
 	int			ief_compact_algo;
-	unsigned		ief_force_local ;/* Pack inodes according
-						      to it's metedata */
-	unsigned		ief_reloc_grp_log; /* Relocate  files only
+	unsigned		ief_force_local; /* Pack inodes according
+						      to their metadata */
+	unsigned		ief_reloc_grp_log; /* Relocate files only
 						      inside that group, usually
 						      inside flexbg */
 	unsigned		cluster_size;
@@ -689,7 +689,7 @@ static errcode_t init_one_group(struct defrag_context *dfx, unsigned long group,
 
 			se = insert_spextent(&dfx->sp_root, &new->node);
 			if (se) { /* Collision, this should not happen during initialization */
-				fprintf(stderr, "Collision want insert:[%llu,%d], exist [%llu, %d]\n",
+				fprintf(stderr, "Collision while insert: [%llu,%d], exist [%llu, %d]\n",
 				       se->start, se->count, new->start, new->count);
 				print_tree(&dfx->sp_root);
 				exit(1);
@@ -749,7 +749,7 @@ static int __get_inode_fiemap(struct defrag_context *dfx, int fd,
 		ret = ioctl(fd, FS_IOC_FIEMAP, fiemap_buf);
 		if (ret < 0 || fiemap_buf->fm_mapped_extents == 0) {
 			if (debug_flag & DBG_FIEMAP) {
-				fprintf(stderr, "%s Can get extent info for inode:%ld ret:%d mapped:%d",
+				fprintf(stderr, "%s: Can't get extent info for inode:%ld ret:%d mapped:%d",
 				       __func__, st->st_ino, ret, fiemap_buf->fm_mapped_extents);
 			}
 			goto out;
@@ -793,7 +793,7 @@ static int __get_inode_fiemap(struct defrag_context *dfx, int fd,
 					*fec = realloc(*fec, sizeof(struct fmap_extent_cache) +
 						       sizeof(struct fmap_extent) * new_sz);
 					if (!(*fec)) {
-						fprintf(stderr, "%s Can not "
+						fprintf(stderr, "%s: Can not "
 							"allocate memory\n", __func__);
 						ret = -1;
 						goto out;
@@ -948,13 +948,14 @@ static int scan_inode_pass1(struct defrag_context *dfx, int fd,
 	dgrp_t ino_grp = e4d_group_of_ino(dfx, stat->st_ino);
 
 	/*
-	 * From defragmentation point of view readonly inode and inode with
-	 * old_mtime are both good candidates for IEF defragmentation procedure
-	 * Inode likely belongs to both sets, but it is reasonable to make two
-	 * sets mutual exclusive in order to make SUM operation correct for
-	 * this two sets.
-	 * Rdonlyness is more fundamental feature because is always meaningful,
-	 * but mtime is less important because may be screwed via utime(2).
+	 * From defragmentation point of view, both a readonly inode and
+	 * an inode with old_mtime are good candidates for IEF defragmentation.
+	 * The inode is likely belongs to both sets, but it is reasonable
+	 * to make two sets mutually exclusive in order to make SUM operation
+	 * correct for these two sets.
+	 * Readonly-ness is more fundamental feature because it is always
+	 * meaningful, while mtime is less important as it may be screwed
+	 * via utime(2).
 	 */
 	if (stat->st_mtime  < older_than)
 		is_old = 1;
@@ -983,7 +984,7 @@ static int scan_inode_pass1(struct defrag_context *dfx, int fd,
 		se = search_spextent(dfx->sp_root.rb_node, fec->fec_map[i].pblk);
 		if (!se || se->start + se->count < fec->fec_map[i].pblk + fec->fec_map[i].len) {
 			if (debug_flag & DBG_SCAN) {
-				fprintf(stderr, "%s Cache collision for inode:%ld"
+				fprintf(stderr, "%s: Cache collision for inode:%ld"
 					", lblock:%u pblock:%llu len:%u. "
 					"Skip it...\n", __func__,
 					stat->st_ino, fec->fec_map[i].lblk,
@@ -1026,12 +1027,12 @@ out:
 }
 
 /*
- * Cache directories from known groups. This directories will be used later for
- * allocating donor files.
+ * Cache directories from known groups. These directories will be used later
+ * for allocating donor files.
  *
  * TODO: The only reason we do all this caching crap is to force block allocator
- *       to allocate donor's blocks from some speciffic group. IMHO it is
- *       reasonable implement IOCTL to advise goal block.
+ *       to allocate donor's blocks from some specific group. IMHO it is
+ *       reasonable to implement an IOCTL to advise the goal block.
  */
 static void group_add_dircache(struct defrag_context *dfx, int dirfd, struct stat64 *stat, const char *name)
 {
@@ -1129,7 +1130,7 @@ static int scan_inode_pass3(struct defrag_context *dfx, int fd,
 		se = search_spextent(dfx->sp_root.rb_node, fec->fec_map[i].pblk);
 		if (!se || se->start + se->count < fec->fec_map[i].pblk + fec->fec_map[i].len) {
 			if (debug_flag & DBG_SCAN) {
-				fprintf(stderr, "%s Cache collision for inode:%ld"
+				fprintf(stderr, "%s: Cache collision for inode:%ld"
 					", lblock:%u pblock:%llu len:%u. "
 					"Skip it...\n", __func__,
 					stat->st_ino, fec->fec_map[i].lblk,
@@ -1147,10 +1148,10 @@ static int scan_inode_pass3(struct defrag_context *dfx, int fd,
 
 	if (ief_blocks) {
 		/*
-		 * Even if some extents belongs to IEF cluster it is not good
-		 * idea to relocate whole file. From other point of view if more
-		 * than half of extents belongs to IEF set  then whole inode is
-		 * suitable for IEdefragmentation.
+		 * Even if some extents belong to IEF cluster, it is not a good
+		 * idea to relocate the whole file. From other point of view,
+		 * if more than half of extents belong to IEF set, then
+		 * the whole inode is suitable for IEdefragmentation.
 		 *
 		 * TODO: Think a bit more about maximum file size suitable
 		 *       for relocation
@@ -1239,7 +1240,7 @@ static int scan_one_dentry(struct defrag_context *dfx, int dirfd,
 		stat.st_uid != current_uid) {
 		ret = 1;
 		if (debug_flag & DBG_SCAN) {
-			fprintf(stderr,	"File %s is not current user's file"
+			fprintf(stderr,	"File %s is not current user's file,"
 				" or current user is not root\n", name);
 		}
 		goto out;
@@ -1248,7 +1249,7 @@ static int scan_one_dentry(struct defrag_context *dfx, int dirfd,
 	ret = scan_ino_fn(dfx, fd, &stat, dirfd, name);
 	if (ret < 0) {
 		if (debug_flag & DBG_SCAN)
-			fprintf(stderr, "Fail to get extents info for %s\n", name);
+			fprintf(stderr, "Failed to get extents info for %s\n", name);
 		goto out;
 	}
 	dfstat_scanned_files++;
@@ -1466,7 +1467,7 @@ static void pass1(struct defrag_context *dfx)
 
 	retval = ext2fs_read_bitmaps (dfx->fs);
 	if (retval || !dfx->fs->block_map) {
-		fprintf(stderr,"Error while allocating block bitmap");
+		fprintf(stderr, "Error while allocating block bitmap");
 		exit(1);
 	}
 
@@ -1479,7 +1480,7 @@ static void pass1(struct defrag_context *dfx)
 	first_block = dfx->fs->super->s_first_data_block;
 
 	if (verbose)
-		printf("Pass1:  Scaning, bitmaps\n");
+		printf("Pass1:  Scanning bitmaps\n");
 
 	for (i = 0; i < dfx->fs->group_desc_count; i++) {
 		if (ext2fs_bg_flags_test(dfx->fs, i, EXT2_BG_BLOCK_UNINIT) ||
@@ -1534,11 +1535,11 @@ static void pass2(struct defrag_context *dfx)
 	int err;
 
 	if (verbose)
-		printf("Pass2:  Scan directory hierarchy\n");
+		printf("Pass2:  Scanning directory hierarchy\n");
 
 	err = scan_inode_pass1(dfx, dfx->root_fd, &dfx->root_st, dfx->root_fd, ".");
 	if (err) {
-		fprintf(stderr, "Pass2: Can not scan root dentry \n");
+		fprintf(stderr, "Pass2: Can not scan root dentry\n");
 		exit(1);
 	}
 
@@ -1558,16 +1559,16 @@ static void pass2(struct defrag_context *dfx)
 
 /*
  * Pass3 prep (IEF preparation stage)
- * At this moment we know enouth info about each space fragment.
+ * At this moment we know enough info about each space fragment.
  * It is time to make relocation decisions.
  * Literature is luck of good relocation/defratmentation algorithms.
- * ZFS is known to use lru list but where is no speciffic info about this.
+ * ZFS is known to use lru list but there is no specific info about this.
  *
- *  Pase3_prep simply scan cached extents and:
- *      a) Divide extents in to defragmentation clusters.
- *      b) Calculate weight and quality of each cluster
- *      d) If defrag cluster is good enough mark all extents in that cluster as
- *	   candidates for ief relocation
+ *  pass3_prep simply scans cached extents and:
+ *      a) Divides extents in to defragmentation clusters.
+ *      b) Calculates weight and quality of each cluster
+ *      d) If a defrag cluster is good enough, marks all extents
+ *         in that cluster as candidates for IEF relocation
  *
  */
 static void pass3_prep(struct defrag_context *dfx)
@@ -1641,12 +1642,12 @@ static void pass3(struct defrag_context *dfx)
 
 	err = walk_subtree(dfx, dfx->root_fd, scan_inode_pass3);
 	if (err) {
-		fprintf(stderr, "Pass3: Rescan subtree failed \n");
+		fprintf(stderr, "Pass3: Rescan subtree failed\n");
 		exit(1);
 	}
 	err = scan_inode_pass3(dfx, dfx->root_fd, &dfx->root_st, dfx->root_fd, ".");
 	if (err) {
-		fprintf(stderr, "Pass3: Can not rescan root dentry \n");
+		fprintf(stderr, "Pass3: Can not rescan root dentry\n");
 		exit(1);
 	}
 
@@ -1667,7 +1668,7 @@ static void release_donor_space(struct donor_info *donor)
 	if (donor->fd != -1) {
 		rc = ftruncate(donor->fd, 0);
 		if (rc)
-			fprintf(stderr, "%s: Failef to ftruncate(0): %m", __func__);
+			fprintf(stderr, "%s: Failed to ftruncate(0): %m", __func__);
 	}
 	free(donor->fec);
 	donor->fec = NULL;
@@ -1703,7 +1704,7 @@ static int do_alloc_donor_space(struct defrag_context *dfx, dgrp_t group,
 	ret = fallocate(donor->fd, 0, 0, blocks << dfx->blocksize_bits);
 	if (ret < 0) {
 		if (debug_flag & DBG_FS)
-			fprintf(stderr, "Can fallocate space for donor file err:%d\n", errno);
+			fprintf(stderr, "Can't fallocate space for donor file err:%d\n", errno);
 		return ret;
 	}
 
@@ -1724,7 +1725,7 @@ static int do_alloc_donor_space(struct defrag_context *dfx, dgrp_t group,
 		goto err;
 
 	if (debug_flag & DBG_FS)
-		printf("%s Create donor file is_local:%d blocks:%lld\n", __func__,
+		printf("%s: Create donor file is_local:%d blocks:%lld\n", __func__,
 		       donor->fest.local_ex == fec->fec_extents, blocks);
 
 	donor->offset = 0;
@@ -1861,12 +1862,12 @@ static int prepare_donor(struct defrag_context *dfx, dgrp_t group,
 	return -1;
 }
 
-/* FIXME: This check defenitely should be smarter */
+/* FIXME: This check definitely should be smarter */
 static int check_iaf(struct defrag_context *dfx, struct stat64 *stat,
 		  struct fmap_extent_cache *fec, struct fmap_extent_stat *fest)
 {
 	__u64 eof_lblk;
-	//// FIXME free_space_average should be tuable
+	//// FIXME free_space_average should be tunable
 	__u64 free_space_average = 16;
 
 	if (!S_ISREG(stat->st_mode))
@@ -1919,7 +1920,7 @@ static int do_defrag_one(struct defrag_context *dfx, int fd,  struct stat64 *sta
 		ret = ioctl(fd, EXT4_IOC_MOVE_EXT, &mv_ioc);
 		if (ret < 0) {
 			if (verbose)
-				fprintf(stderr, "%s EXT4_IOC_MOVE_EXT failed err:%d\n",
+				fprintf(stderr, "%s: EXT4_IOC_MOVE_EXT failed err:%d\n",
 					__func__, errno);
 			if (errno != EBUSY || !retry--)
 				break;
@@ -1971,7 +1972,7 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 
 	if (st2.st_ino != stat->st_ino) {
 		if (debug_flag & DBG_RT)
-			fprintf(stderr, "%s Race while reopen\n", __func__);
+			fprintf(stderr, "%s: Race while reopen\n", __func__);
 		return 0;
 	}
 
@@ -2000,7 +2001,7 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 	ret = prepare_donor(dfx, ino_grp, &donor, eof_lblk, force_local, fest->frag / 2);
 	if (ret) {
 		if (debug_flag & DBG_SCAN)
-			fprintf(stderr, "%s group:%u Can not allocate donor"
+			fprintf(stderr, "%s: group:%u Can not allocate donor"
 				" file\n", __func__,  ino_grp);
 		return 0;
 	}
@@ -2068,7 +2069,7 @@ static int do_ief_defrag_one(struct defrag_context *dfx, dgrp_t group,
 
 	ret = fstat64(fd, &st);
 	if (ret) {
-		fprintf(stderr, "Fstat faild with %d\n", errno);
+		fprintf(stderr, "Fstat failed with %d\n", errno);
 		rfh->flags |= SP_FL_IGNORE;
 		close(fd);
 		return 0;
@@ -2110,27 +2111,27 @@ out:
  * We already collected number of candidates, and we want to pack it effectively
  * EXAMPLE:
  * [ino1].....[ino2]...[ino3]..[ino4]    ==> [ino1][ino2][ino3][ino4]
- *                                      OR=> [ino2][ino4][ino2][ino1]
+ *                                      OR=> [ino2][ino4][ino3][ino1]
  *
  * Rational assuptions for effective packing:
  * 1) Inodes should be from same group in order to maintain mdata/data locality
  * 2) Inodes should be packed in optimal order in order to reduce number of seeks
  * There are several ordering stategies:
  *  2a) Pack according to first block :
- *      Stability: Very good, original order is preserved. So number of seek
+ *      Stability: Very good, original order is preserved. So number of seeks
  *             will be less or equal.
- *      Optimization potential: Is low be cause will fix only create/unlink scenario
- *	for two types of files stable and temporal
+ *      Optimization potential: low because will fix only create/unlink scenario
+ *	for two types of files, stable and temporary
  *  2b) Pack according to inode number: Almost the same advantages as (2a) but
- *      tend fix some deviations which was introduced by block allocator.
+ *      tend to fix some deviations which were introduced by the block allocator.
  *  2c) Pack according to directory order.
  *      Stability: may result in IO performance degradation for some workloads.
- *      Optimization potential: Will likely to fix rename scenario.
+ *      Optimization potential: Will likely fix the rename scenario.
  * 3) Donor file should be from the same group.
  *
  * It is reasonable to separate IEF defragmentation in two phases
  *  1) Sort inodes according to some strategy:  ief_defgar_prep()
- *  2) Finaly compact inodes in spacified order: ief_defrag_finish() FIXME!!! fix comment
+ *  2) Finally compact inodes in spacified order: ief_defrag_finish() FIXME!!! fix comment
  */
 
 static int ief_defrag_group(struct defrag_context *dfx, dgrp_t idx)
@@ -2144,7 +2145,7 @@ static int ief_defrag_group(struct defrag_context *dfx, dgrp_t idx)
 	__u64 blocks;
 	/*
 	 * Prepare stage
-	 * Walk inodes in block order in order to warmup pagecache
+	 * Walk inodes in block order in order to warm up the page cache
 	 */
 	group->ief_inodes = 0;
 	group->ief_local = 0;
@@ -2160,7 +2161,7 @@ static int ief_defrag_group(struct defrag_context *dfx, dgrp_t idx)
 
 		fd = do_open_fhandle(dfx, rfh, O_RDONLY);
 		if (fd < 0) {
-			/* Propably file was unlinked, renamed "
+			/* Probably file was unlinked, renamed "
 			   " or modified, simply ignore it */
 			if (debug_flag & DBG_RT)
 				fprintf(stderr, "%s Can not open file %d, ignore\n",
@@ -2171,7 +2172,7 @@ static int ief_defrag_group(struct defrag_context *dfx, dgrp_t idx)
 
 		ret = fstat64(fd, &st);
 		if (ret) {
-			fprintf(stderr, "Fstat faild with %d\n", errno);
+			fprintf(stderr, "Fstat failed with %d\n", errno);
 			rfh->flags |= SP_FL_IGNORE;
 			close(fd);
 			continue;
@@ -2300,7 +2301,7 @@ static void pass4(struct defrag_context *dfx)
 
 		ret = ief_defrag_group(dfx, i);
 		if (ret) {
-			fprintf(stderr, "%s Error while defragmentation %u group\n",
+			fprintf(stderr, "%s: Error defragmenting %u group\n",
 				__func__, i);
 			exit(1);
 		}
@@ -2326,7 +2327,7 @@ static void close_device(char *device_name, ext2_filsys fs)
 	int retval = ext2fs_close(fs);
 
 	if (retval)
-		com_err(device_name, retval, "while closing the filesystem.\n");
+		com_err(device_name, retval, "while closing the filesystem");
 }
 
 static void open_device(char *device_name, ext2_filsys *fs)
@@ -2385,7 +2386,7 @@ int main(int argc, char *argv[])
 		case 'c':
 			cluster_size = strtoul(optarg, &end, 0);
 			if (!cluster_size || (cluster_size & (cluster_size - 1))) {
-				fprintf(stderr, "gefragmentation cluster size must be power of 2");
+				fprintf(stderr, "Defragmentation cluster size must be power of 2");
 				usage();
 			}
 			break;
@@ -2408,7 +2409,7 @@ int main(int argc, char *argv[])
 			if (older_than > time_start.tv_sec) {
 				if (verbose)
 					fprintf(stderr, "WARNING: timestamp is "
-						"at %lu seconds in future\n",
+						"%lu seconds in the future\n",
 						(unsigned long)older_than - time_start.tv_sec);
 			}
 			break;
@@ -2441,7 +2442,7 @@ int main(int argc, char *argv[])
 		}
 	}
 	if (optind + 2 != argc) {
-		fprintf(stderr, "%s: missing device name.\n", program_name);
+		fprintf(stderr, "%s: missing device name\n", program_name);
 		usage();
 	}
 
@@ -2457,14 +2458,14 @@ int main(int argc, char *argv[])
 	}
 
 	if (fstat64(dfx.root_fd, &dfx.root_st)) {
-		fprintf(stderr, "%s: can fstat root:%s, errno:%d",
+		fprintf(stderr, "%s: can't fstat root:%s, errno:%d",
 			__func__, root_dir, errno);
 		exit(1);
 	}
 
 	dfx.blocksize_bits = ul_log2(dfx.root_st.st_blksize);
 	if (cluster_size < dfx.root_st.st_blksize) {
-		fprintf(stderr, "defragmentarion cluster can not be less than fs"
+		fprintf(stderr, "Defragmentation cluster can not be less than fs"
 			"block size\n");
 		exit(1);
 	}
@@ -2474,7 +2475,7 @@ int main(int argc, char *argv[])
 	 */
 	fhp = malloc(sizeof(struct file_handle) + MAX_HANDLE_SZ);
 	if (!fhp) {
-		fprintf(stderr, "%s:  Can not allocate memory errno:%d\n", __func__, errno);
+		fprintf(stderr, "%s: Can not allocate memory errno:%d\n", __func__, errno);
 		exit(1);
 	}
 
@@ -2514,7 +2515,7 @@ int main(int argc, char *argv[])
 
 	dfx.group = malloc (sizeof (struct group_info*) * nr_grp);
 	if (!dfx.group) {
-		fprintf(stderr, "%s:  Can not allocate memory errno:%d\n", __func__, errno);
+		fprintf(stderr, "%s: Can not allocate memory errno:%d\n", __func__, errno);
 		exit(1);
 	}
 	memset(dfx.group, 0 , sizeof (struct group_info*) * nr_grp);
