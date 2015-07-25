@@ -53,6 +53,20 @@ extern int optind;
 #define O_DIRECTORY	00200000
 #endif
 
+#define __CHKMEM(p, who, commands...) \
+do { \
+	if (p == NULL) { \
+		fprintf(stderr, "%s: Can't allocate memory: %m\n", who); \
+		commands; \
+	} \
+} while(0);
+
+#define CHKMEM(p, commands...)	\
+	__CHKMEM(p, __func__, commands)
+
+#define CHKMEM_PROG(p, commands...) \
+	__CHKMEM(p, program_name, commands)
+
 struct linux_dirent64
 {
 	__u64		d_ino;
@@ -578,10 +592,7 @@ static int __do_open_f_handle(struct defrag_context *dfx, unsigned char *f_handl
 	struct file_handle *fh;
 
 	fh = malloc(sizeof (struct file_handle) + dfx->root_fhp->handle_bytes);
-	if (!fh) {
-		fprintf(stderr, "%s: Can not allocate memory errno:%d\n", __func__, errno);
-		return -1;
-	}
+	CHKMEM(fh, return -1);
 
 	fh->handle_bytes = dfx->root_fhp->handle_bytes;
 	fh->handle_type = dfx->root_fhp->handle_type;
@@ -718,19 +729,12 @@ static int __get_inode_fiemap(struct defrag_context *dfx, int fd,
 	fie_buf_size = sizeof(struct fiemap) + ext_buf_size;
 
 	fiemap_buf = malloc(fie_buf_size);
-	if (fiemap_buf == NULL) {
-		fprintf(stderr, "%s: Can not allocate memory errno:%d\n", __func__, errno);
-		return -1;
-	}
+	CHKMEM(fiemap_buf, return -1);
 
 	if (!(*fec)) {
 		*fec = malloc(sizeof(struct fmap_extent_cache) +
 			      sizeof(struct fmap_extent) * DEFAULT_FMAP_CACHE_SZ);
-		if (!(*fec)) {
-			fprintf(stderr, "%s: Can not allocate memory errno:%d\n", __func__, errno);
-			ret = -1;
-			goto out;
-		}
+		CHKMEM(*fec, ret = -1; goto out);
 		(*fec)->fec_size = DEFAULT_FMAP_CACHE_SZ;
 		(*fec)->fec_extents = 0;
 	}
@@ -792,12 +796,7 @@ static int __get_inode_fiemap(struct defrag_context *dfx, int fd,
 
 					*fec = realloc(*fec, sizeof(struct fmap_extent_cache) +
 						       sizeof(struct fmap_extent) * new_sz);
-					if (!(*fec)) {
-						fprintf(stderr, "%s: Can not "
-							"allocate memory\n", __func__);
-						ret = -1;
-						goto out;
-					}
+					CHKMEM(*fec, ret = -1; goto out);
 					(*fec)->fec_size = new_sz;
 				}
 			}
@@ -870,20 +869,13 @@ static int group_add_ief_candidate(struct defrag_context *dfx, int dirfd, const 
 	if (!dfx->group[group]) {
 		dfx->group[group] = malloc(sizeof(struct group_info) +
 					   dfx->root_fhp->handle_bytes * GROUP_DIR_CACHE_SZ);
-		if (!dfx->group[group]) {
-			fprintf(stderr, "%s: Can not allocate memory errno:%d\n", __func__, errno);
-			return -1;
-		}
+		CHKMEM(dfx->group[group], return -1);
 		memset(dfx->group[group], 0, sizeof(struct group_info));
 		dfx->group[group]->fh_root = RB_ROOT;
 	}
 
 	fhp = malloc(sizeof(struct file_handle) + dfx->root_fhp->handle_bytes);
-	if (!fhp) {
-		fprintf(stderr, "%s: Can not allocate memory errno:%d\n", __func__, errno);
-		return -1;
-	}
-
+	CHKMEM(fhp);
 	memset(fhp, 0, sizeof(*fhp));
 
 	fhp->handle_bytes = dfx->root_fhp->handle_bytes;
@@ -1051,11 +1043,7 @@ static void group_add_dircache(struct defrag_context *dfx, int dirfd, struct sta
 	}
 
 	fhp = malloc(sizeof(struct file_handle) + dfx->root_fhp->handle_bytes);
-	if (!fhp) {
-		fprintf(stderr, "%s: Can not allocate memory errno:%d\n", __func__, errno);
-		exit(1);
-	}
-
+	CHKMEM(fhp, exit(1));
 	memset(fhp, 0, sizeof(*fhp));
 
 	fhp->handle_bytes = dfx->root_fhp->handle_bytes;
@@ -1281,10 +1269,7 @@ static int walk_subtree(struct defrag_context * dfx, int fd, proc_inode_t scan_f
 
 	bufsz = stb.st_size + getpagesize();
 	buf = malloc(bufsz);
-	if (!buf) {
-		fprintf(stderr, "%s: Can not allocate memory errno:%d\n", __func__, errno);
-		return -1;
-	}
+	CHKMEM(buf, return -1);
 
 	offset = 0;
 	space = bufsz;
@@ -1305,11 +1290,7 @@ static int walk_subtree(struct defrag_context * dfx, int fd, proc_inode_t scan_f
 			continue;
 
 		buf = realloc(buf, bufsz*2);
-		if (buf == NULL) {
-			fprintf(stderr, "Can not allocate memory");
-			err = -1;
-			break;
-		}
+		CHKMEM(buf, err = -1; break);
 
 		space += bufsz;
 		bufsz *= 2;
@@ -1472,10 +1453,7 @@ static void pass1(struct defrag_context *dfx)
 	}
 
 	block_bitmap = malloc(block_nbytes);
-	if (!block_bitmap) {
-		fprintf(stderr, "%s: Can not allocate memory errno:%d\n", __func__, errno);
-		exit(1);
-	}
+	CHKMEM(block_bitmap, exit(1));
 
 	first_block = dfx->fs->super->s_first_data_block;
 
@@ -2472,11 +2450,7 @@ int main(int argc, char *argv[])
 
 	/* Allocate max possible handle size */
 	fhp = malloc(sizeof(struct file_handle) + MAX_HANDLE_SZ);
-	if (!fhp) {
-		fprintf(stderr, "%s: Can not allocate memory errno:%d\n", program_name, errno);
-		exit(1);
-	}
-
+	CHKMEM_PROG(fhp, exit(1));
 	fhp->handle_bytes = MAX_HANDLE_SZ;
 	if (name_to_handle_at(dfx.root_fd, ".", fhp,
 			   &dfx.root_mntid, 0) < 0) {
@@ -2506,10 +2480,7 @@ int main(int argc, char *argv[])
 		>> dfx.ief_reloc_grp_log;
 
 	dfx.group = malloc (sizeof (struct group_info*) * nr_grp);
-	if (!dfx.group) {
-		fprintf(stderr, "%s: Can not allocate memory errno:%d\n", program_name, errno);
-		exit(1);
-	}
+	CHKMEM_PROG(dfx.group, exit(1));
 	memset(dfx.group, 0 , sizeof (struct group_info*) * nr_grp);
 
 	pass1(&dfx);
