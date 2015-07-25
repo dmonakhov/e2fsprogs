@@ -2453,20 +2453,20 @@ int main(int argc, char *argv[])
 	dfx.root_fd = open(root_dir, O_RDONLY|O_DIRECTORY);
 	if (dfx.root_fd < 0) {
 		fprintf(stderr, "%s: can not open directory at:%s, errno:%d",
-			__func__, root_dir, errno);
+			program_name, root_dir, errno);
 		exit(1);
 	}
 
 	if (fstat64(dfx.root_fd, &dfx.root_st)) {
 		fprintf(stderr, "%s: can't fstat root:%s, errno:%d",
-			__func__, root_dir, errno);
+			program_name, root_dir, errno);
 		exit(1);
 	}
 
 	dfx.blocksize_bits = ul_log2(dfx.root_st.st_blksize);
 	if (cluster_size < dfx.root_st.st_blksize) {
-		fprintf(stderr, "Defragmentation cluster can not be less than fs"
-			"block size\n");
+		fprintf(stderr, "%s: Defragmentation cluster can not be less than fs"
+			"block size\n", program_name);
 		exit(1);
 	}
 
@@ -2507,7 +2507,7 @@ int main(int argc, char *argv[])
 
 	dfx.group = malloc (sizeof (struct group_info*) * nr_grp);
 	if (!dfx.group) {
-		fprintf(stderr, "%s: Can not allocate memory errno:%d\n", __func__, errno);
+		fprintf(stderr, "%s: Can not allocate memory errno:%d\n", program_name, errno);
 		exit(1);
 	}
 	memset(dfx.group, 0 , sizeof (struct group_info*) * nr_grp);
