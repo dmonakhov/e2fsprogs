@@ -852,6 +852,17 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 typedef int proc_inode_t (struct defrag_context *dfx, int fd, struct stat64 *st,
 			  int dirfd, const char *name);
 
+
+static int group_info_init(struct defrag_context *dfx, dgrp_t group)
+{
+	dfx->group[group] = malloc(sizeof(struct group_info) +
+				   dfx->root_fhp->handle_bytes * GROUP_DIR_CACHE_SZ);
+	CHKMEM(dfx->group[group], return 0);
+	memset(dfx->group[group], 0, sizeof(struct group_info));
+	dfx->group[group]->fh_root = RB_ROOT;
+
+	return 1;
+}
 /* Add ief candidate for later processing */
 static int group_add_ief_candidate(struct defrag_context *dfx, int dirfd, const char* name,
 				   dgrp_t group, __u64 pblock,
@@ -865,6 +876,9 @@ static int group_add_ief_candidate(struct defrag_context *dfx, int dirfd, const 
 	errcode_t retval;
 
 	assert(flags & SP_FL_IEF_RELOC);
+
+	if (!dfx->group[group] && !group_info_init(dfx, group))
+		return -1;
 
 	if (!dfx->group[group]) {
 		dfx->group[group] = malloc(sizeof(struct group_info) +
@@ -1033,8 +1047,10 @@ static void group_add_dircache(struct defrag_context *dfx, int dirfd, struct sta
 	struct file_handle *fhp = NULL;
 	dgrp_t grp = e4d_group_of_ino(dfx, stat->st_ino);
 
-	if (!dfx->group[grp] ||
-	    dfx->group[grp]->dir_cached == GROUP_DIR_CACHE_SZ)
+	if (!dfx->group[grp] && !group_info_init(dfx, grp))
+		return;
+
+	if (dfx->group[grp]->dir_cached == GROUP_DIR_CACHE_SZ)
 		return;
 
 	for (i = 0; i < dfx->group[grp]->dir_cached; i++) {
