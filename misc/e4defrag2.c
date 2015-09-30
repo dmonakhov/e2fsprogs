@@ -1092,9 +1092,13 @@ static int scan_inode_pass3(struct defrag_context *dfx, int fd,
 	/* IAF inodes can be fixed independently */
 	if (check_iaf(dfx, stat, fec, &fest)) {
 		struct stat64 dst;
+
 		ret = fstat64(dirfd, &dst);
+		if (ret)
+			goto out;
+
 		group_add_dircache(dfx, dirfd, &dst, ".");
-		ret = do_iaf_defrag_one(dfx, dirfd, name, stat, fec, &fest);
+		do_iaf_defrag_one(dfx, dirfd, name, stat, fec, &fest);
 		goto out;
 	}
 
@@ -1932,6 +1936,7 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 		fec->fec_map[fec->fec_extents -1].len;
 
 	assert(fest->frag >= 2);
+	ret  = 0;
 
 	/* Need to reopen file for RW */
 	fd = openat(dirfd, name, O_RDWR);
@@ -1945,13 +1950,13 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 		if (debug_flag & DBG_RT)
 			fprintf(stderr, "%s: stat failed err:%d\n", __func__,
 				errno);
-		return 0;
+		goto out_fd;
 	}
 
 	if (st2.st_ino != stat->st_ino) {
 		if (debug_flag & DBG_RT)
 			fprintf(stderr, "%s: Race while reopen\n", __func__);
-		return 0;
+		goto out_fd;
 	}
 
 	donor.fd = -1;
@@ -1981,7 +1986,7 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 		if (debug_flag & DBG_SCAN)
 			fprintf(stderr, "%s: group:%u Can not allocate donor"
 				" file\n", __func__,  ino_grp);
-		return 0;
+		goto out_fd;
 	}
 
 	if (debug_flag & DBG_SCAN) {
@@ -2017,6 +2022,7 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 			       fest->frag, donor.fest.frag);
 	}
 	close_donor(&donor);
+out_fd:
 	close(fd);
 
 	return ret;
