@@ -889,7 +889,7 @@ static inline int get_inode_fiemap(struct defrag_context *dfx, int fd,
 	return __get_inode_fiemap(dfx, fd, st, blksz_log, FIEMAP_EXTENT_UNWRITTEN,
 				  fec, fest);
 }
-static int check_iaf(struct defrag_context *dfx, struct stat64 *stat,
+static int check_iaf(struct stat64 *stat,
 		     struct fmap_extent_cache *fec, struct fmap_extent_stat *fest);
 
 static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *name,
@@ -1164,7 +1164,7 @@ static int scan_inode_pass3(struct defrag_context *dfx, int fd,
 		goto out;
 
 	/* IAF inodes can be fixed independently */
-	if (check_iaf(dfx, stat, fec, &fest)) {
+	if (check_iaf(stat, fec, &fest)) {
 		struct stat64 dst;
 
 		ret = fstat64(dirfd, &dst);
@@ -1986,7 +1986,7 @@ static int prepare_donor(struct defrag_context *dfx, dgrp_t group,
 }
 
 /* FIXME: This check definitely should be smarter */
-static int check_iaf(struct defrag_context *dfx, struct stat64 *stat,
+static int check_iaf(struct stat64 *stat,
 		  struct fmap_extent_cache *fec, struct fmap_extent_stat *fest)
 {
 	__u64 eof_lblk;
