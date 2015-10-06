@@ -992,7 +992,8 @@ free_fh:
 static int scan_inode_pass1(struct defrag_context *dfx, int fd,
 			    struct stat64 *stat, int dirfd, const char *name)
 {
-	int i, ret = 0;
+	int ret = 0;
+	unsigned i;
 	unsigned is_old = 0;
 	unsigned is_rdonly = 0;
 	struct fmap_extent_stat fest;
@@ -1090,7 +1091,8 @@ out:
 static void group_add_dircache(struct defrag_context *dfx, int dirfd, struct stat64 *stat, const char *name)
 {
 	int mnt;
-	int i,ret;
+	int ret;
+	unsigned i;
 	struct file_handle *fhp = NULL;
 	dgrp_t grp = e4d_group_of_ino(dfx, stat->st_ino);
 
@@ -1352,7 +1354,7 @@ static int walk_subtree(struct defrag_context * dfx, int fd, proc_inode_t scan_f
 	int err = 0;
 	int bufsz;
 	int offset;
-	int space;
+	size_t space;
 
 	if (fstat64(fd, &stb)) {
 		fprintf(stderr, "%s fstat64: %m\n", __func__);
@@ -1464,7 +1466,8 @@ static int ief_defrag_prep_one(struct defrag_context *dfx, dgrp_t group,
 			       int fd, struct rb_fhandle *fhandle,
 			       struct stat64 *stat)
 {
-	int i, ret;
+	int ret;
+	unsigned i;
 	__u32 csum;
 	struct fmap_extent_cache *fec = NULL;
 	struct fmap_extent_stat fest;
@@ -1861,7 +1864,8 @@ static int do_find_donor(struct defrag_context *dfx, dgrp_t group,
 			  struct donor_info *donor, __u64 blocks,
 			  unsigned force_local, unsigned max_frag)
 {
-	int dir, i, ret = 0;
+	int dir, ret = 0;
+	unsigned i;
 	struct stat64 st;
 	dgrp_t donor_grp;
 	int dir_retries = 3;
@@ -1942,7 +1946,8 @@ static int prepare_donor(struct defrag_context *dfx, dgrp_t group,
 			 struct donor_info *donor, __u64 blocks,
 			 unsigned force_local, unsigned max_frag)
 {
-	int i, ret;
+	int ret;
+	unsigned i;
 	dgrp_t nr_groups = dfx->fs->group_desc_count >> dfx->ief_reloc_grp_log;
 
 
@@ -2131,7 +2136,7 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 		force_local = 0;
 
 	if (debug_flag & (DBG_SCAN|DBG_IAF)) {
-		int i;
+		unsigned i;
 		printf("%s ENTER inode:%ld eof:%llu force_local:%d frag:%u local_ex:%u\n",
 		       __func__, stat->st_ino, (unsigned long long) eof_lblk,
 		       force_local, fest->frag, fest->local_ex);
@@ -2151,7 +2156,7 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 	}
 
 	if (debug_flag & (DBG_SCAN|DBG_IAF)) {
-		int i;
+		unsigned i;
 		printf("%s FOUND DONOR inode:%ld eof:%llu force_local:%d frag:%u local_ex:%u\n",
 		       __func__, stat->st_ino, (unsigned long long) eof_lblk,
 		       force_local, fest->frag, fest->local_ex);
@@ -2554,7 +2559,7 @@ int main(int argc, char *argv[])
 	int quality = 700;
 	dgrp_t nr_grp;
 	int flex_bg = 0;
-	unsigned long long min_frag_size = 0;
+	blksize_t min_frag_size = 0;
 	memset(&dfx, 0, sizeof(dfx));
 	add_error_table(&et_ext2_error_table);
 	gettimeofday(&time_start, 0);
