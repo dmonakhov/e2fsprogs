@@ -663,7 +663,7 @@ static errcode_t alloc_spextent(__u64 start, __u32 count, struct spextent **sptr
 	return 0;
 }
 
-static void fmap_csum_init(ext2_filsys fs, struct stat64 *st,  __u32 *crc)
+static void fmap_csum_init(struct stat64 *st,  __u32 *crc)
 {
 	*crc = ext2fs_crc32c_le(0xdeadbeef, (unsigned char *)&st->st_ino, sizeof(st->st_ino));
 	*crc = ext2fs_crc32c_le(*crc, (unsigned char *)&st->st_size, sizeof(st->st_size));
@@ -1185,7 +1185,7 @@ static int scan_inode_pass3(struct defrag_context *dfx, int fd,
 	 * At this point it is too expensive to store fiemap cache for each
 	 * IEF candidate, store it's fiemap csum
 	 */
-	fmap_csum_init(dfx->fs, stat, &csum);
+	fmap_csum_init(stat, &csum);
 
 	for (i = 0; i < fec->fec_extents; i++) {
 		struct spextent *se;
@@ -1480,7 +1480,7 @@ static int ief_defrag_prep_one(struct defrag_context *dfx, dgrp_t group,
 		goto changed;
 
 	if (fhandle->flags & SP_FL_CSUM) {
-		fmap_csum_init(dfx->fs, stat, &csum);
+		fmap_csum_init(stat, &csum);
 		for (i = 0; i < fec->fec_extents; i++)
 			fmap_csum_ext(fec->fec_map + i, &csum);
 		if (fhandle->csum != csum)
