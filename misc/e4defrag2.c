@@ -1001,6 +1001,10 @@ static int scan_inode_pass1(struct defrag_context *dfx, int fd,
 	struct spextent *se;
 	dgrp_t ino_grp = e4d_group_of_ino(dfx, stat->st_ino);
 
+	/* deliberately unused */
+	(void)dirfd;
+	(void)name;
+
 	/*
 	 * From defragmentation point of view, both a readonly inode and
 	 * an inode with old_mtime are good candidates for IEF defragmentation.
