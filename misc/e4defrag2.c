@@ -2024,7 +2024,7 @@ static int check_iaf(struct stat64 *stat,
 }
 
 static int do_defrag_one(struct defrag_context *dfx, int fd,  struct stat64 *stat,
-			 struct fmap_extent_cache *fec, struct fmap_extent_stat *fest,
+			 struct fmap_extent_cache *fec,
 			 __u64 eof_lblk, struct donor_info *donor)
 {
 	int ret, retry;
@@ -2170,7 +2170,7 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 
 	defrag_fadvise(fd, 0 , eof_lblk << dfx->blocksize_bits, 1);
 
-	ret = do_defrag_one(dfx, fd, stat, fec, fest, eof_lblk, &donor);
+	ret = do_defrag_one(dfx, fd, stat, fec, eof_lblk, &donor);
 	if (!ret) {
 		dfstat_iaf_defragmented++;
 		dfstat_iaf_defragmented_sz += eof_lblk;
@@ -2241,7 +2241,7 @@ static int do_ief_defrag_one(struct defrag_context *dfx, dgrp_t group,
 
 	defrag_fadvise(fd, 0 , eof_lblk << dfx->blocksize_bits, 1);
 
-	ret = do_defrag_one(dfx, fd, &st, fec, &fest, eof_lblk, donor);
+	ret = do_defrag_one(dfx, fd, &st, fec, eof_lblk, donor);
 
 	if (debug_flag & (DBG_RT| DBG_IEF))
 		printf("%s process inode %lu flags:%x, ret:%d\n",
