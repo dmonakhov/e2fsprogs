@@ -1540,7 +1540,6 @@ changed:
 static void pass1(struct defrag_context *dfx)
 {
 	unsigned long i;
-	blk64_t	first_block, last_block;
 	char *block_bitmap = NULL;
 	int		block_nbytes;
 	blk64_t		blk_itr = EXT2FS_B2C(dfx->fs, dfx->fs->super->s_first_data_block);
@@ -1557,8 +1556,6 @@ static void pass1(struct defrag_context *dfx)
 	block_bitmap = malloc(block_nbytes);
 	CHKMEM(block_bitmap, exit(1));
 
-	first_block = dfx->fs->super->s_first_data_block;
-
 	if (verbose)
 		printf("Pass1:  Scanning bitmaps\n");
 
@@ -1571,8 +1568,6 @@ static void pass1(struct defrag_context *dfx)
 			blk_itr += dfx->fs->super->s_clusters_per_group;
 			continue;
 		}
-		first_block = ext2fs_group_first_block2(dfx->fs, i);
-		last_block = ext2fs_group_last_block2(dfx->fs, i);
 
 		if (block_bitmap) {
 			retval = ext2fs_get_block_bitmap_range2(dfx->fs->block_map,
