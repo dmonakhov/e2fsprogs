@@ -401,7 +401,7 @@ static inline __u64 dfx_sz2b(struct defrag_context *dfx, __u64 size)
 	return (size + (1 << dfx->blocksize_bits) -1) >> dfx->blocksize_bits;
 }
 
-void df_show_stats()
+void df_show_stats(void)
 {
 	printf("Inodes  scanned:\t\t%llu \n", dfstat_scanned_inodes);
 	printf("Directories  scanned:\t\t%llu \n", dfstat_scanned_directories);
@@ -2711,7 +2711,7 @@ int main(int argc, char *argv[])
 
 	gettimeofday(&time_end, 0);
 	if (mem_usage)
-		df_show_stats(&dfx);
+		df_show_stats();
 
 	close(dfx.root_fd);
 	close_device(device_name, dfx.fs);
