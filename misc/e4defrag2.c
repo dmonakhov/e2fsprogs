@@ -1616,6 +1616,9 @@ static void pass3_prep(struct defrag_context *dfx)
 						node_to_spextent(cluster_node);
 					ief_ok = 1;
 					se->flags |= SP_FL_IEF_RELOC;
+					if (debug_flag & DBG_TREE)
+						print_spex("\t\t\t->IEF", se);
+
 					ext_to_move++;
 					blocks_to_move += se->count;
 					cluster_node =
@@ -1624,13 +1627,15 @@ static void pass3_prep(struct defrag_context *dfx)
 				clusters_to_move++;
 			}
 			if (debug_flag & DBG_TREE)
-				printf("Cluster %lld stats {count:%d used:%d good:%d ief:%d}\n",
-				       prev_cluster, count, used, good, ief_ok);
+				printf("Cluster %lld %lld] group:%ld stats {count:%d used:%d good:%d ief:%d}\n",
+				       prev_cluster, prev_cluster + dfx->cluster_size,
+				       e4d_group_of_blk(dfx, prev_cluster),
+				       count, used, good, ief_ok);
 			good = 0;
 			count = 0;
 			used  = 0;
 			cluster_node = node;
-			prev_cluster = ex->start & cluster_mask;
+			prev_cluster = cluster;
 		}
 		count++;
 		used += ex->count;
