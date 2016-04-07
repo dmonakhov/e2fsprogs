@@ -1890,22 +1890,30 @@ static int check_iaf(struct defrag_context *dfx, struct stat64 *stat,
 {
 	__u64 eof_lblk;
 	//// FIXME free_space_average should be tunable
-	__u64 free_space_average = 16;
+	__u64 free_space_average = 64;
+	int ret  = 1;
 
 	if (!S_ISREG(stat->st_mode))
-		return 0;
+		ret = 0;
 	if (fec->fec_extents < 2)
-		return 0;
+		ret = 0;
 	if (fest->hole)
-		return 0;
+		ret = 0;
+
 
 	eof_lblk = fec->fec_map[fec->fec_extents -1].lblk +
 		fec->fec_map[fec->fec_extents -1].len;
 
 	if (eof_lblk / fest->frag > free_space_average)
-		return 0;
+		ret = 0;
 
-	return 1;
+
+	if (debug_flag & DBG_RT)
+		printf("%s ino:%ld frag:%d eof_blk:%lld free_space_aver:%d ret:%d\n",
+		       __FUNCTION__, stat->st_ino, eof_lblk, fest->frag,
+		       free_space_average, ret);
+
+	return ret;
 
 }
 
@@ -2007,7 +2015,7 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 	/* Force local group for small files
 	 * FIXME: This should be tunable
 	 */
-	force_local = eof_lblk < 16;
+	force_local = eof_lblk < 4;
 
 	if (debug_flag & DBG_SCAN) {
 		int i;
@@ -2015,10 +2023,9 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 		       __func__, stat->st_ino, (unsigned long long) eof_lblk,
 		       force_local, fest->frag, fest->local_ex);
 		for (i = 0; i < fec->fec_extents; i++)
-			printf("%llu ->[%u, %u] %llu [%u, %u]\n",
-				eof_lblk, force_local,
-				fec->fec_map[i].lblk, fec->fec_map[i].pblk,
-				fec->fec_map[i].len, fest->local_ex);
+			printf("%u [%u, %u] -> %llu [%u, %u]\n",
+			       i, fec->fec_map[i].lblk, fec->fec_map[i].len,
+			       fec->fec_map[i].pblk);
 	}
 
 	ret = prepare_donor(dfx, ino_grp, &donor, eof_lblk, force_local, fest->frag / 2);
@@ -2036,10 +2043,11 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 		       force_local, fest->frag, fest->local_ex);
 
 		for (i = 0; i < donor.fec->fec_extents; i++)
-			printf("%llu ->[%u, %u] EX:%llu [%u, %u]\n",
-			       (unsigned long long)eof_lblk, force_local,
-			       donor.fec->fec_map[i].lblk, donor.fec->fec_map[i].pblk,
-			       donor.fec->fec_map[i].len, donor.fest.local_ex);
+			printf("%u [%u, %u] -> %llu [%u, %u]\n",
+			       i, donor.fec->fec_map[i].lblk,
+			       donor.fec->fec_map[i].len,
+			       donor.fec->fec_map[i].pblk);
+
 	}
 
 	defrag_fadvise(fd, 0 , eof_lblk << dfx->blocksize_bits, 1);
