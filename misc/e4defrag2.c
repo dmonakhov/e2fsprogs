@@ -2348,16 +2348,32 @@ static void close_device(char *device_name, ext2_filsys fs)
 		com_err(device_name, retval, "while closing the filesystem");
 }
 
-static void open_device(char *device_name, ext2_filsys *fs)
+static void open_device(char *device_name, ext2_filsys *fs, dev_t devno)
 {
+	struct stat64 st;
 	int retval;
 	int flag = EXT2_FLAG_FORCE | EXT2_FLAG_64BITS;
+
+	retval = stat64(device_name, &st);
+	if (retval < 0) {
+		com_err(device_name, retval, "while opening filesystem image");
+		exit(1);
+	}
+	if (!S_ISBLK(st.st_mode)) {
+		com_err(device_name, retval, "while opening filesystem, block device expected");
+		exit(1);
+	}
+	if (st.st_rdev != devno) {
+		com_err(device_name, retval, "while opening filesystem, wrong block device");
+		exit(1);
+	}
 
 	retval = ext2fs_open(device_name, flag, 0, 0, unix_io_manager, fs);
 	if (retval) {
 		com_err(device_name, retval, "while opening filesystem");
 		exit(1);
 	}
+      
 	(*fs)->default_bitmap_type = EXT2FS_BMAP64_RBTREE;
 }
 
@@ -2469,7 +2485,6 @@ int main(int argc, char *argv[])
 	current_uid = getuid();
 	device_name = argv[optind];
 	root_dir = argv[optind + 1];
-	open_device(device_name, &dfx.fs);
 	dfx.root_fd = open(root_dir, O_RDONLY|O_DIRECTORY);
 	if (dfx.root_fd < 0) {
 		fprintf(stderr, "%s: can not open directory at:%s, errno:%d\n",
@@ -2482,7 +2497,7 @@ int main(int argc, char *argv[])
 			program_name, root_dir);
 		exit(1);
 	}
-
+	open_device(device_name, &dfx.fs, dfx.root_st.st_dev);
 	dfx.blocksize_bits = ul_log2(dfx.root_st.st_blksize);
 	if (cluster_size < dfx.root_st.st_blksize) {
 		fprintf(stderr, "%s: Defragmentation cluster can not be less than fs"
