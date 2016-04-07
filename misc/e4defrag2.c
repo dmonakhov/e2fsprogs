@@ -1075,12 +1075,16 @@ static void group_add_dircache(struct defrag_context *dfx, int dirfd, struct sta
 		free(fhp);
 		return;
 	}
+	if (debug_flag & DBG_FS)
+		printf("%s group:%d cache_idx:%d inode:%d\n", __func__, grp, stat->st_ino,
+		       dfx->group[grp]->dir_cached);
 
 	memcpy(dfx->group[grp]->dir_rawh +
 	       dfx->root_fhp->handle_bytes * dfx->group[grp]->dir_cached,
 	       fhp->f_handle, dfx->root_fhp->handle_bytes);
 	dfx->group[grp]->dir_ino[dfx->group[grp]->dir_cached] = stat->st_ino;
 	dfx->group[grp]->dir_cached++;
+
 }
 
 static int scan_inode_pass3(struct defrag_context *dfx, int fd,
@@ -1775,8 +1779,11 @@ static int do_find_donor(struct defrag_context *dfx, dgrp_t group,
 		dir = __do_open_f_handle(dfx, raw_fh, O_RDONLY);
 		if(dir < 0) {
 			if (debug_flag & DBG_SCAN)
-				fprintf(stderr, "Can not open parent handle"
-				       " err:%d\n", errno);
+				fprintf(stderr, "%s: Can not open parent handle for "
+					"grp:%d cache_id:%d inode:%d fid[0]\n"
+					", %m\n", __func__, group, i,
+					dfx->group[group]->dir_ino,
+					((int*)raw_fh)[0]);
 			continue;
 		}
 
