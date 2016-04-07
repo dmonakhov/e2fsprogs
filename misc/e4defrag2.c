@@ -2368,8 +2368,8 @@ int main(int argc, char *argv[])
 	char *end;
 	struct file_handle *fhp = NULL;
 	int cluster_size = 1 << 20;
-	int scale = 7;
-	int quality = 1000;
+	int scale = 2;
+	int quality = 700;
 	dgrp_t nr_grp;
 	int flex_bg = 0;
 	unsigned long long min_frag_size = 0;
