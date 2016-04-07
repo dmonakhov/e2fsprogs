@@ -1848,6 +1848,7 @@ static int prepare_donor(struct defrag_context *dfx, dgrp_t group,
 		printf("%s grp:%u donor_fd:%d blocks:%llu frag:%u\n",
 		       __func__, group, donor->fd, blocks, max_frag);
 	}
+	assert(blocks);
 
 	/* First try to reuse existing donor if available */
 	if (donor->fd != -1) {
@@ -2266,6 +2267,10 @@ next_cluster:
 			rfh->fec->fec_map[rfh->fec->fec_extents -1].len;
 	}
 	prev = rfh;
+
+	/* Do we have somthing to relocate */
+	if (!blocks)
+		return 0;
 
 	ret = prepare_donor(dfx, idx, &donor, blocks, dfx->ief_force_local, 2);
 	if (ret) {
