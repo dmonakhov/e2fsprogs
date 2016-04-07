@@ -408,6 +408,16 @@ void df_show_stats()
 		       (dfstat_spextents * sizeof(struct spextent)) / 1024);
 	}
 }
+static void print_spex(char *msg, struct spextent *ex)
+{
+	printf("%s ex:%p ->[%llu, %u] ex:%d d:%d ro:%d "
+	       "old:%d fnd:%d iaf:%d flags:%x\n", msg,
+	       ex, ex->start, ex->count,
+	       (int)ex->extents, (int)ex->dir_extents,
+	       (int)ex->ro_extents, (int)ex->old_extents,
+	       (int)ex->found, (int)ex->iaf_extents,
+	       (int)ex->flags);
+}
 
 static void print_tree_range(struct rb_node *first, struct rb_node *last)
 {
@@ -417,12 +427,7 @@ static void print_tree_range(struct rb_node *first, struct rb_node *last)
 	printf("\t\t\t=================================\n");
 	for (node = first; node != NULL; node = ext2fs_rb_next(node)) {
 		ex = node_to_spextent(node);
-		printf("\t\t\t ex:%p ->[%llu, %u] ex:%d d:%d ro:%d "
-		       "old:%d fnd:%d iaf:%d \n",
-		       ex, ex->start, ex->count,
-		       (int)ex->extents, (int)ex->dir_extents,
-		       (int)ex->ro_extents, (int)ex->old_extents,
-		       (int)ex->found, (int)ex->iaf_extents);
+		print_spex("\t\t\t", ex);
 		if (node == last)
 			break;
 	}
@@ -1579,6 +1584,7 @@ static void pass3_prep(struct defrag_context *dfx)
 	unsigned used = 0;
 	unsigned good = 0;
 	unsigned count = 0;
+	unsigned ief_ok = 0;
 
 	if (verbose)
 		printf("Pass3_prep:  Scan and rate cached extents\n");
@@ -1593,13 +1599,18 @@ static void pass3_prep(struct defrag_context *dfx)
 			ex->flags |= SP_FL_FULL;
 		cluster = (ex->start + ex->count) & cluster_mask;
 
+		if (debug_flag & DBG_TREE)
+			print_spex("\t\t\t", ex);
+
 		if (prev_cluster != cluster) {
+			ief_ok = 0;
 			if (dfx->cluster_size  >= used * dfx->weight_scale &&
 			    good * 1000 >= count * dfx->extents_quality &&
 			    cluster_node) {
 				while (cluster_node != node) {
 					struct spextent *se =
 						node_to_spextent(cluster_node);
+					ief_ok = 1;
 					se->flags |= SP_FL_IEF_RELOC;
 					ext_to_move++;
 					blocks_to_move += se->count;
@@ -1608,6 +1619,9 @@ static void pass3_prep(struct defrag_context *dfx)
 				}
 				clusters_to_move++;
 			}
+			if (debug_flag & DBG_TREE)
+				printf("Cluster %lld stats {count:%d used:%d good:%d ief:%d}\n",
+				       prev_cluster, count, used, good, ief_ok);
 			good = 0;
 			count = 0;
 			used  = 0;
