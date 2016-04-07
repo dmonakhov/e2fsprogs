@@ -931,8 +931,8 @@ static int group_add_ief_candidate(struct defrag_context *dfx, int dirfd, const 
 		dfx->group[group]->flags |= SP_FL_IEF_RELOC;
 		dfstat_ief_groups++;
 	}
-	dfstat_iaf_candidates_sz += blocks;
-	dfstat_iaf_candidates++;
+	dfstat_ief_candidates_sz += blocks;
+	dfstat_ief_candidates++;
 
 	*out_fh = rbfh;
 
@@ -1166,8 +1166,6 @@ static int scan_inode_pass3(struct defrag_context *dfx, int fd,
 		 */
 		if (ief_blocks *2 > size_blk && ( is_rdonly || is_old ||
 						  size_blk < dfx->cluster_size)) {
-			dfstat_ief_candidates_sz += size_blk;
-			dfstat_ief_candidates++;
 			ino_flags |= SP_FL_IEF_RELOC;
 			if (debug_flag & DBG_SCAN && ief_blocks != size_blk)
 				printf("%s Force add %lu to IEF set ief:%lld "
@@ -2151,7 +2149,7 @@ static int ief_defrag_group(struct defrag_context *dfx, dgrp_t idx)
 	group->ief_local = 0;
 	group->ief_extents = 0;
 	group->ief_blocks = 0;
-	dfstat_directories += dfx->group[idx]->dir_cached++;
+	dfstat_directories += dfx->group[idx]->dir_cached;
 
 	for (node = ext2fs_rb_first(&group->fh_root); node != NULL;
 	     node = ext2fs_rb_next(node)) {
