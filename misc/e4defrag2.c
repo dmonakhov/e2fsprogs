@@ -758,7 +758,7 @@ static int __get_inode_fiemap(struct defrag_context *dfx, int fd,
 		ret = ioctl(fd, FS_IOC_FIEMAP, fiemap_buf);
 		if (ret < 0 || fiemap_buf->fm_mapped_extents == 0) {
 			if (debug_flag & DBG_FIEMAP) {
-				fprintf(stderr, "%s: Can't get extent info for inode:%ld ret:%d mapped:%d",
+				fprintf(stderr, "%s: Can't get extent info for inode:%ld ret:%d mapped:%d\n",
 				       __func__, st->st_ino, ret, fiemap_buf->fm_mapped_extents);
 			}
 			goto out;
@@ -1233,7 +1233,7 @@ static int scan_one_dentry(struct defrag_context *dfx, int dirfd,
 	ret = fstat64(fd, &stat);
 	if (ret) {
 		if (debug_flag & DBG_SCAN)
-			fprintf(stderr,	"Error while fstat for %s, errno:%d", name, errno);
+			fprintf(stderr,	"Error while fstat for %s, errno:%d\n", name, errno);
 		goto out;
 	}
 
@@ -1283,7 +1283,7 @@ static int walk_subtree(struct defrag_context * dfx, int fd, proc_inode_t scan_f
 	int space;
 
 	if (fstat64(fd, &stb)) {
-		fprintf(stderr, "%s fstat64: %m", __func__);
+		fprintf(stderr, "%s fstat64: %m\n", __func__);
 		return -1;
 	}
 
@@ -1678,7 +1678,7 @@ static void release_donor_space(struct donor_info *donor)
 	if (donor->fd != -1) {
 		rc = ftruncate(donor->fd, 0);
 		if (rc)
-			fprintf(stderr, "%s: Failed to ftruncate(0): %m", __func__);
+			fprintf(stderr, "%s: Failed to ftruncate(0): %m\n", __func__);
 	}
 	free(donor->fec);
 	donor->fec = NULL;
@@ -1720,7 +1720,7 @@ static int do_alloc_donor_space(struct defrag_context *dfx, dgrp_t group,
 
 	ret = fstat64(donor->fd, &stat);
 	if (ret) {
-		fprintf(stderr,	"Error while fstat errno:%d", errno);
+		fprintf(stderr,	"Error while fstat errno:%d\n", errno);
 		return ret;
 	}
 
@@ -1783,8 +1783,7 @@ static int do_find_donor(struct defrag_context *dfx, dgrp_t group,
 		donor->fd = openat(dir, dfname, O_RDWR|O_CREAT|O_EXCL, 0700);
 		if (donor->fd < 0) {
 			if (debug_flag & DBG_RT)
-				fprintf(stderr,"Can not create donor file err:%d",
-					errno);
+				fprintf(stderr,"Can not create donor file %m\n");
 			close(dir);
 			continue;
 		}
@@ -1795,7 +1794,7 @@ static int do_find_donor(struct defrag_context *dfx, dgrp_t group,
 
 		if (unlinkat(dir, dfname, 0)) {
 			ret = -1;
-			fprintf(stderr, "Can not unlink donor file, err:%d", errno);
+			fprintf(stderr, "Can not unlink donor file, %m\n");
 			goto try_next;
 
 		}
@@ -1805,7 +1804,7 @@ static int do_find_donor(struct defrag_context *dfx, dgrp_t group,
 		if (ret) {
 			ret = 0;
 			if (debug_flag & DBG_SCAN)
-				fprintf(stderr,"fstat failed with err:%d", errno);
+				fprintf(stderr,"fstat failed %m\n");
 			goto try_next;
 		}
 		donor_grp = e4d_group_of_ino(dfx, st.st_ino);
@@ -1930,8 +1929,8 @@ static int do_defrag_one(struct defrag_context *dfx, int fd,  struct stat64 *sta
 		ret = ioctl(fd, EXT4_IOC_MOVE_EXT, &mv_ioc);
 		if (ret < 0) {
 			if (verbose)
-				fprintf(stderr, "%s: EXT4_IOC_MOVE_EXT failed err:%d\n",
-					__func__, errno);
+				fprintf(stderr, "%s: EXT4_IOC_MOVE_EXT failed %m\n",
+					__func__);
 			if (errno != EBUSY || !retry--)
 				break;
 		} else
@@ -2081,7 +2080,7 @@ static int do_ief_defrag_one(struct defrag_context *dfx, dgrp_t group,
 
 	ret = fstat64(fd, &st);
 	if (ret) {
-		fprintf(stderr, "Fstat failed with %d\n", errno);
+		fprintf(stderr, "Fstat failed %m\n");
 		rfh->flags |= SP_FL_IGNORE;
 		close(fd);
 		return 0;
@@ -2184,7 +2183,7 @@ static int ief_defrag_group(struct defrag_context *dfx, dgrp_t idx)
 
 		ret = fstat64(fd, &st);
 		if (ret) {
-			fprintf(stderr, "Fstat failed with %d\n", errno);
+			fprintf(stderr, "Fstat failed %m\n");
 			rfh->flags |= SP_FL_IGNORE;
 			close(fd);
 			continue;
@@ -2466,14 +2465,14 @@ int main(int argc, char *argv[])
 	open_device(device_name, &dfx.fs);
 	dfx.root_fd = open(root_dir, O_RDONLY|O_DIRECTORY);
 	if (dfx.root_fd < 0) {
-		fprintf(stderr, "%s: can not open directory at:%s, errno:%d",
+		fprintf(stderr, "%s: can not open directory at:%s, errno:%d\n",
 			program_name, root_dir, errno);
 		exit(1);
 	}
 
 	if (fstat64(dfx.root_fd, &dfx.root_st)) {
-		fprintf(stderr, "%s: can't fstat root:%s, errno:%d",
-			program_name, root_dir, errno);
+		fprintf(stderr, "%s: can't fstat root:%s, %m\n",
+			program_name, root_dir);
 		exit(1);
 	}
 
