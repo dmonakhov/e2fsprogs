@@ -2364,6 +2364,8 @@ static void usage(void)
 	fprintf(stderr, "\t-f: Enable default flex group optimization\n");
 	fprintf(stderr, "\t-F: same as '-f' but provides manual flex grp log size\n");
 	fprintf(stderr, "\t-l: force new blocks only inside single meta group\n");
+	fprintf(stderr, "\t-m: dump fs and memory statistics at the end\n");
+	fprintf(stderr, "\t-n: dry run\n");
 	fprintf(stderr, "\t-s: scale factor\n");
 	fprintf(stderr, "\t-q: defragmentation quality factor\n");
 	fprintf(stderr, "\t-t: interpret inodes modified earlier than N seconds ago as RO files\n");
