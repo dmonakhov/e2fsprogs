@@ -2409,6 +2409,7 @@ int main(int argc, char *argv[])
 	char *end;
 	struct file_handle *fhp = NULL;
 	int cluster_size = 1 << 20;
+	int reloc_cluster_size = 0;
 	int scale = 2;
 	int quality = 700;
 	dgrp_t nr_grp;
@@ -2418,7 +2419,7 @@ int main(int argc, char *argv[])
 	add_error_table(&et_ext2_error_table);
 	gettimeofday(&time_start, 0);
 
-	while ((c = getopt(argc, argv, "a:c:d:fF:hlmnt:s:T:vq:")) != EOF) {
+	while ((c = getopt(argc, argv, "a:C:c:d:fF:hlmnt:s:T:vq:")) != EOF) {
 		switch (c) {
 		case 'a':
 			min_frag_size = strtoul(optarg, &end, 0);
@@ -2431,7 +2432,13 @@ int main(int argc, char *argv[])
 				usage();
 			}
 			break;
-
+		case 'C':
+			reloc_cluster_size = strtoul(optarg, &end, 0);
+			if (!reloc_cluster_size || (reloc_cluster_size & (reloc_cluster_size - 1))) {
+				fprintf(stderr, "Relocation cluster size must be power of 2");
+				usage();
+			}
+			break;
 		case 'd':
 			debug_flag = strtoul(optarg, &end, 0);
 			break;
@@ -2523,6 +2530,7 @@ int main(int argc, char *argv[])
 	/* Finaly init of defrag context */
 	dfx.root_fhp = fhp;
 	dfx.cluster_size = cluster_size >> dfx.blocksize_bits;
+	dfx.ief_reloc_cluster = reloc_cluster_size >> dfx.blocksize_bits;
 	dfx.iaf_cluster_size = 16;
 	if (min_frag_size  >= dfx.root_st.st_blksize)
 		dfx.iaf_cluster_size = min_frag_size >> dfx.blocksize_bits;
