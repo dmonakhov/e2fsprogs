@@ -1249,6 +1249,8 @@ static int scan_one_dentry(struct defrag_context *dfx, int dirfd,
 		goto out;
 	if (stat.st_blocks == 0)
 		goto out;
+	if (stat.st_dev != dfx->root_st.st_dev)
+		goto out;
 
 	/* Access authority */
 	if (current_uid != ROOT_UID &&
