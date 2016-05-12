@@ -217,6 +217,7 @@ enum debug_flags {
 	DBG_FS = 0x10,
 	DBG_FIEMAP = 0x20,
 	DBG_BITMAP = 0x40,
+	DBG_ERR = 0x80,
 };
 
 /* The following macro is used for ioctl FS_IOC_FIEMAP
@@ -1740,10 +1741,14 @@ static int do_alloc_donor_space(struct defrag_context *dfx, dgrp_t group,
 		goto err;
 	}
 	////TODO:  Checks are sufficient for good donor?
-	if (force_local && donor->fest.local_ex != fec->fec_extents)
+	if (force_local && donor->fest.local_ex != fec->fec_extents) {
+		ret = -2;
 		goto err;
-	if (donor->fest.frag > max_frag)
+	}
+	if (donor->fest.frag > max_frag) {
+		ret = -3;
 		goto err;
+	}
 
 	if (debug_flag & DBG_FS)
 		printf("%s: Create donor file is_local:%d blocks:%lld\n", __func__,
@@ -1754,11 +1759,12 @@ static int do_alloc_donor_space(struct defrag_context *dfx, dgrp_t group,
 	donor->fec = fec;
 	return 0;
 err:
-	if (debug_flag & DBG_RT)
+	if (debug_flag & DBG_ERR)
 		printf("%s:%d REJECT donor grp:%u donor_fd:%d blocks:%llu local:%d frag:%u ret:%d\n",
-		       __func__, __LINE__,  group, donor->fd, blocks, force_local, max_frag, -1);
+		       __func__, __LINE__,  group, donor->fd, blocks, force_local, max_frag, ret);
 
 	free(fec);
+
 	return -1;
 }
 
