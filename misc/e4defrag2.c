@@ -279,6 +279,7 @@ enum spext_flags
 	SP_FL_DIRLOCAL = 0x20,
 	SP_FL_CSUM = 0x40,
 	SP_FL_FMAP = 0x80,
+	SP_FL_TP_RELOC = 0x100,
 };
 
 struct rb_fhandle
@@ -383,6 +384,7 @@ struct defrag_context
 	unsigned		cluster_size;
 	unsigned		ief_reloc_cluster;
 	unsigned		weight_scale;
+	unsigned		tp_weight_scale;
 	unsigned		extents_quality;
 };
 
@@ -1098,6 +1100,7 @@ static int scan_inode_pass3(struct defrag_context *dfx, int fd,
 	int is_old = 0;
 	int is_rdonly = 0;
 	__u64 ief_blocks = 0;
+	__u64 tp_blocks = 0;
 	__u32 ino_flags = 0;
 	__u64 size_blk = dfx_sz2b(dfx, stat->st_size);
 	__u64 used_blk = dfx_sz2b(dfx, stat->st_blocks << 9);
@@ -1158,13 +1161,16 @@ static int scan_inode_pass3(struct defrag_context *dfx, int fd,
 		}
 		if (se->flags & SP_FL_IEF_RELOC)
 			ief_blocks += fec->fec_map[i].len;
+		if (se->flags & SP_FL_TP_RELOC)
+			tp_blocks += fec->fec_map[i].len;
+
 		fmap_csum_ext(fec->fec_map + i, &csum);
 	}
 
 	if (fest.local_ex == fec->fec_extents)
 		ino_flags |= SP_FL_LOCAL;
 
-	if (ief_blocks) {
+	if (ief_blocks || tp_blocks) {
 		/*
 		 * Even if some extents belong to IEF cluster, it is not a good
 		 * idea to relocate the whole file. From other point of view,
@@ -1179,6 +1185,13 @@ static int scan_inode_pass3(struct defrag_context *dfx, int fd,
 			ino_flags |= SP_FL_IEF_RELOC;
 			if (debug_flag & DBG_SCAN && ief_blocks != size_blk)
 				printf("%s Force add %lu to IEF set ief:%lld "
+				       "size_blk:%lld used_blk:%lld\n",
+				       __func__, stat->st_ino, ief_blocks,
+				       size_blk, used_blk);
+		} else if (tp_blocks * 4 > size_blk) {
+			ino_flags |= SP_FL_IEF_RELOC | SP_FL_TP_RELOC;
+			if (debug_flag & DBG_SCAN && ief_blocks != size_blk)
+				printf("%s Force add %lu to IEF/TP set ief:%lld "
 				       "size_blk:%lld used_blk:%lld\n",
 				       __func__, stat->st_ino, ief_blocks,
 				       size_blk, used_blk);
@@ -1592,6 +1605,7 @@ static void pass3_prep(struct defrag_context *dfx)
 	unsigned good = 0;
 	unsigned count = 0;
 	unsigned ief_ok = 0;
+	unsigned force_reloc = 0;
 
 	if (verbose)
 		printf("Pass3_prep:  Scan and rate cached extents\n");
@@ -1610,18 +1624,29 @@ static void pass3_prep(struct defrag_context *dfx)
 			print_spex("\t\t\t", ex);
 
 		if (prev_cluster != cluster) {
-			ief_ok = 0;
+			force_reloc = ief_ok = 0;
+			/* Is cluster has enough RO(good) data blocks ?*/
 			if (dfx->cluster_size  >= used * dfx->weight_scale &&
-			    good * 1000 >= count * dfx->extents_quality &&
-			    cluster_node) {
+			    good * 1000 >= count * dfx->extents_quality)
+				ief_ok = 1;
+
+			/* Thin provision corner case: If cluster has low number
+			 * of data blocks it should be relocated regardless to
+			 * block's quality in order to improve space efficency */
+			if (dfx->cluster_size  >= used * dfx->tp_weight_scale) {
+				ief_ok = 1;
+				force_reloc = 1;
+			}
+
+			if (ief_ok && cluster_node) {
 				while (cluster_node != node) {
 					struct spextent *se =
 						node_to_spextent(cluster_node);
-					ief_ok = 1;
 					se->flags |= SP_FL_IEF_RELOC;
+					if (force_reloc)
+						se->flags |= SP_FL_TP_RELOC;
 					if (debug_flag & DBG_TREE)
 						print_spex("\t\t\t->IEF", se);
-
 					ext_to_move++;
 					blocks_to_move += se->count;
 					cluster_node =
@@ -2010,7 +2035,7 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 	}
 
 	if (st2.st_ino != stat->st_ino) {
-		if (debug_flag & DBG_RT)
+ 		if (debug_flag & DBG_RT)
 			fprintf(stderr, "%s: Race while reopen\n", __func__);
 		goto out_fd;
 	}
@@ -2183,6 +2208,7 @@ static int ief_defrag_group(struct defrag_context *dfx, dgrp_t idx)
 	struct donor_info donor;
 	struct group_info * group = dfx->group[idx];
 	__u64 blocks;
+	int force_local = 0;
 	/*
 	 * Prepare stage
 	 * Walk inodes in block order in order to warm up the page cache
@@ -2278,6 +2304,7 @@ static int ief_defrag_group(struct defrag_context *dfx, dgrp_t idx)
 	donor.offset = 0;
 next_cluster:
 	blocks = 0;
+	force_local = dfx->ief_force_local;
 	/* Divide inodes in to reallocation clusters */
 	for (rfh = group->next; rfh != NULL; rfh = rfh->next) {
 		assert(!(rfh->flags & SP_FL_IGNORE));
@@ -2286,6 +2313,8 @@ next_cluster:
 			break;
 		blocks += rfh->fec->fec_map[rfh->fec->fec_extents -1].lblk +
 			rfh->fec->fec_map[rfh->fec->fec_extents -1].len;
+		if (rfh->flags &  SP_FL_TP_RELOC)
+			force_local = 0;
 	}
 	prev = rfh;
 
@@ -2293,7 +2322,7 @@ next_cluster:
 	if (!blocks)
 		return 0;
 
-	ret = prepare_donor(dfx, idx, &donor, blocks, dfx->ief_force_local, 2);
+	ret = prepare_donor(dfx, idx, &donor, blocks, force_local, 2);
 	if (ret) {
 		if (debug_flag & DBG_SCAN)
 			fprintf(stderr, "%s group:%u Can not allocate donor"
@@ -2415,6 +2444,7 @@ static void usage(void)
 	fprintf(stderr, "\t-m: dump fs and memory statistics at the end\n");
 	fprintf(stderr, "\t-n: dry run\n");
 	fprintf(stderr, "\t-s: scale factor\n");
+	fprintf(stderr, "\t-S: thin provision scale factor\n");
 	fprintf(stderr, "\t-q: defragmentation quality factor\n");
 	fprintf(stderr, "\t-t: interpret inodes modified earlier than N seconds ago as RO files\n");
 	fprintf(stderr, "\t-T: same as '-t' but use an absolute value\n");
@@ -2432,6 +2462,7 @@ int main(int argc, char *argv[])
 	int cluster_size = 1 << 20;
 	int reloc_cluster_size = 0;
 	int scale = 2;
+	int tp_scale = 32; /* 1/32 ==> 3% */
 	int quality = 700;
 	dgrp_t nr_grp;
 	int flex_bg = 0;
@@ -2440,7 +2471,7 @@ int main(int argc, char *argv[])
 	add_error_table(&et_ext2_error_table);
 	gettimeofday(&time_start, 0);
 
-	while ((c = getopt(argc, argv, "a:C:c:d:fF:hlmnt:s:T:vq:")) != EOF) {
+	while ((c = getopt(argc, argv, "a:C:c:d:fF:hlmnt:s:S:T:vq:")) != EOF) {
 		switch (c) {
 		case 'a':
 			min_frag_size = strtoul(optarg, &end, 0);
@@ -2484,6 +2515,10 @@ int main(int argc, char *argv[])
 			break;
 		case 's':
 			scale = strtoul(optarg, &end, 0);
+			break;
+
+		case 'S':
+			tp_scale = strtoul(optarg, &end, 0);
 			break;
 
 		case 'q':
@@ -2557,6 +2592,7 @@ int main(int argc, char *argv[])
 		dfx.iaf_cluster_size = min_frag_size >> dfx.blocksize_bits;
 
 	dfx.weight_scale = scale;
+	dfx.tp_weight_scale = tp_scale;
 	dfx.extents_quality = quality;
 	dfx.ro_fs = dry_run;
 	dfx.sp_root = RB_ROOT;
