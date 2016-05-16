@@ -2516,7 +2516,7 @@ int main(int argc, char *argv[])
 	add_error_table(&et_ext2_error_table);
 	gettimeofday(&time_start, 0);
 
-	while ((c = getopt(argc, argv, "a:C:c:d:fF:hlmnt:s:S:T:vq:")) != EOF) {
+	while ((c = getopt(argc, argv, "a:C:c:d:fF:hl:mnt:s:S:T:vq:")) != EOF) {
 		switch (c) {
 		case 'a':
 			min_frag_size = strtoul(optarg, &end, 0);
@@ -2572,7 +2572,7 @@ int main(int argc, char *argv[])
 				usage();
 			break;
 		case 'l':
-			dfx.ief_force_local = 1;
+			dfx.ief_force_local = !!strtoul(optarg, &end, 0);
 			break;
 
 		case 'n':
