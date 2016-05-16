@@ -218,6 +218,10 @@ enum debug_flags {
 	DBG_FIEMAP = 0x20,
 	DBG_BITMAP = 0x40,
 	DBG_ERR = 0x80,
+	DBG_CLUSTER = 0x100,
+	DBG_TAG = 0x200,
+	DBG_IAF = 0x400,
+	DBG_IEF = 0x800,
 };
 
 /* The following macro is used for ioctl FS_IOC_FIEMAP
@@ -903,7 +907,7 @@ static int group_add_ief_candidate(struct defrag_context *dfx, int dirfd, const 
 	fhp->handle_bytes = dfx->root_fhp->handle_bytes;
 	ret = name_to_handle_at(dirfd, name, fhp, &mnt, 0);
 	if (ret) {
-		if (debug_flag & DBG_SCAN)
+		if (debug_flag & (DBG_SCAN|DBG_IEF))
 			fprintf(stderr, "Unexpected result from name_to_handle_at()\n");
 		goto free_fh;
 	}
@@ -916,7 +920,7 @@ static int group_add_ief_candidate(struct defrag_context *dfx, int dirfd, const 
 
 	if (insert_fhandle(&dfx->group[group]->fh_root, &rbfh->node)) {
 		/* Inode is already in the list, likely nlink > 1 */
-		if (debug_flag & DBG_SCAN)
+		if (debug_flag & (DBG_SCAN|DBG_IEF))
 			fprintf(stderr, "File is already in the list, nlink > 1,"
 				" Not an error\n");
 		ext2fs_free_mem(&rbfh);
@@ -1127,8 +1131,10 @@ static int scan_inode_pass3(struct defrag_context *dfx, int fd,
 			goto out;
 
 		group_add_dircache(dfx, dirfd, &dst, ".");
-		do_iaf_defrag_one(dfx, dirfd, name, stat, fec, &fest);
-		goto out;
+		ret = do_iaf_defrag_one(dfx, dirfd, name, stat, fec, &fest);
+		if (!ret)
+			goto out;
+		
 	}
 
 	if (stat->st_mtime  < older_than)
@@ -1171,6 +1177,12 @@ static int scan_inode_pass3(struct defrag_context *dfx, int fd,
 		ino_flags |= SP_FL_LOCAL;
 
 	if (ief_blocks || tp_blocks) {
+		if (debug_flag & DBG_SCAN && ief_blocks != size_blk)
+			printf("%s ENTER %lu to IEF set ief:%lld "
+			       "size_blk:%lld used_blk:%lld\n",
+			       __func__, stat->st_ino, ief_blocks,
+			       size_blk, used_blk);
+
 		/*
 		 * Even if some extents belong to IEF cluster, it is not a good
 		 * idea to relocate the whole file. From other point of view,
@@ -1201,11 +1213,17 @@ static int scan_inode_pass3(struct defrag_context *dfx, int fd,
 			       __func__, stat->st_ino, ief_blocks,
 			       size_blk, used_blk);
 		}
+		if (debug_flag & DBG_SCAN && ief_blocks != size_blk)
+			printf("%s ENTER %lu to IEF set ief:%lld "
+			       "size_blk:%lld used_blk:%lld fl:%lx\n",
+			       __func__, stat->st_ino, ief_blocks,
+			       size_blk, used_blk, ino_flags);
+
 	}
 
 	if (ino_flags & SP_FL_IEF_RELOC) {
 		struct stat dst;
-		struct rb_fhandle *rbfh;
+		struct rb_fhandle *rbfh = NULL;
 		/* FIXME: Is it any better way to find directory inode num? */
 		ret = fstat(dirfd, &dst);
 		if (!ret && ino_grp ==  e4d_group_of_ino(dfx, dst.st_ino))
@@ -1456,7 +1474,7 @@ static int ief_defrag_prep_one(struct defrag_context *dfx, dgrp_t group,
 	if (fhandle->flags & SP_FL_LOCAL)
 		dfx->group[group]->ief_local++;
 
-	if (debug_flag & DBG_SCAN)
+	if (debug_flag & (DBG_SCAN | DBG_IEF))
 		printf("%s Check inode %lu flags:%x, OK...\n",
 		       __func__, stat->st_ino, fhandle->flags);
 
@@ -1603,7 +1621,9 @@ static void pass3_prep(struct defrag_context *dfx)
 	__u64 clusters_to_move = 0;
 	unsigned used = 0;
 	unsigned good = 0;
+	unsigned mdata = 0;
 	unsigned count = 0;
+	unsigned found = 0;
 	unsigned ief_ok = 0;
 	unsigned force_reloc = 0;
 
@@ -1620,7 +1640,7 @@ static void pass3_prep(struct defrag_context *dfx)
 			ex->flags |= SP_FL_FULL;
 		cluster = (ex->start + ex->count) & cluster_mask;
 
-		if (debug_flag & DBG_TREE)
+		if (debug_flag & DBG_CLUSTER)
 			print_spex("\t\t\t", ex);
 
 		if (prev_cluster != cluster) {
@@ -1645,7 +1665,7 @@ static void pass3_prep(struct defrag_context *dfx)
 					se->flags |= SP_FL_IEF_RELOC;
 					if (force_reloc)
 						se->flags |= SP_FL_TP_RELOC;
-					if (debug_flag & DBG_TREE)
+					if (debug_flag & DBG_CLUSTER)
 						print_spex("\t\t\t->IEF", se);
 					ext_to_move++;
 					blocks_to_move += se->count;
@@ -1654,19 +1674,28 @@ static void pass3_prep(struct defrag_context *dfx)
 				}
 				clusters_to_move++;
 			}
-			if (debug_flag & DBG_TREE)
-				printf("Cluster %lld %lld] group:%ld stats {count:%d used:%d good:%d ief:%d}\n",
-				       prev_cluster, prev_cluster + dfx->cluster_size,
+			if (debug_flag & DBG_CLUSTER)
+				printf("Cluster %lld %lld] group:%ld stats "
+				       "{count:%d used:%d good:%d found:%d "
+				       "mdata:%u ief:%d force_reloc:%d}\n",
+				       prev_cluster,
+				       prev_cluster + dfx->cluster_size,
 				       e4d_group_of_blk(dfx, prev_cluster),
-				       count, used, good, ief_ok);
+				       count, used, good, found, mdata,
+				       ief_ok, force_reloc);
 			good = 0;
 			count = 0;
 			used  = 0;
+			found = 0;
+			mdata = 0;
 			cluster_node = node;
 			prev_cluster = cluster;
 		}
 		count++;
 		used += ex->count;
+		found += ex->found;
+		mdata += ex->dir_extents;
+
 		if (ex->flags & SP_FL_GOOD && !(ex->flags & SP_FL_IGNORE))
 			good++;
 	}
@@ -1960,6 +1989,9 @@ static int do_defrag_one(struct defrag_context *dfx, int fd,  struct stat64 *sta
 
 	assert(donor->length >= eof_lblk);
 
+	if (debug_flag & (DBG_RT | DBG_IEF| DBG_IAF))
+		printf("%s perform inode:%ld\n", __func__, stat->st_ino);
+
 	if (dfx->ro_fs) {
 		if (debug_flag & DBG_RT)
 			printf("Fileystem is readonly, skip actual defrag");
@@ -1999,7 +2031,13 @@ static int do_defrag_one(struct defrag_context *dfx, int fd,  struct stat64 *sta
 
 	donor->length -= moved;
 	donor->offset += moved;
-
+	if (debug_flag & (DBG_RT | DBG_IAF | DBG_IEF))
+		printf("%s inode:%lld start:%lld eof:%lld donor [%lld, %lld] ret:%d\n",
+		       __func__, (unsigned long long)stat->st_ino,
+		       (unsigned long long)fec->fec_map[0].pblk,
+		       (unsigned long long)eof_lblk,
+		       (unsigned long long)donor->offset,
+		       (unsigned long long)donor->length, ret);
 	return ret;
 }
 /*
@@ -2022,20 +2060,20 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 	/* Need to reopen file for RW */
 	fd = openat(dirfd, name, O_RDWR);
 	if (fd < 0) {
-		if (debug_flag & DBG_RT)
+		if (debug_flag & (DBG_RT|DBG_IAF))
 			fprintf(stderr, "%s: can not open candidate\n", __func__);
 		return 0;
 	}
 
 	if (fstat64(fd, &st2)) {
-		if (debug_flag & DBG_RT)
+		if (debug_flag & (DBG_RT|DBG_IAF))
 			fprintf(stderr, "%s: stat failed err:%d\n", __func__,
 				errno);
 		goto out_fd;
 	}
 
 	if (st2.st_ino != stat->st_ino) {
- 		if (debug_flag & DBG_RT)
+ 		if (debug_flag & (DBG_RT|DBG_IAF))
 			fprintf(stderr, "%s: Race while reopen\n", __func__);
 		goto out_fd;
 	}
@@ -2050,26 +2088,26 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 	 */
 	force_local = eof_lblk < 4;
 
-	if (debug_flag & DBG_SCAN) {
+	if (debug_flag & (DBG_SCAN|DBG_IAF)) {
 		int i;
 		printf("%s ENTER inode:%ld eof:%llu force_local:%d frag:%u local_ex:%u\n",
 		       __func__, stat->st_ino, (unsigned long long) eof_lblk,
 		       force_local, fest->frag, fest->local_ex);
 		for (i = 0; i < fec->fec_extents; i++)
-			printf("%u [%u, %u] -> %llu [%u, %u]\n",
+			printf("%u [%u, %u] -> %llu\n",
 			       i, fec->fec_map[i].lblk, fec->fec_map[i].len,
 			       fec->fec_map[i].pblk);
 	}
 
 	ret = prepare_donor(dfx, ino_grp, &donor, eof_lblk, force_local, fest->frag / 2);
 	if (ret) {
-		if (debug_flag & DBG_SCAN)
+		if (debug_flag & (DBG_SCAN|DBG_IAF))
 			fprintf(stderr, "%s: group:%u Can not allocate donor"
 				" file\n", __func__,  ino_grp);
 		goto out_fd;
 	}
 
-	if (debug_flag & DBG_SCAN) {
+	if (debug_flag & (DBG_SCAN|DBG_IAF)) {
 		int i;
 		printf("%s FOUND DONOR inode:%ld eof:%llu force_local:%d frag:%u local_ex:%u\n",
 		       __func__, stat->st_ino, (unsigned long long) eof_lblk,
@@ -2121,6 +2159,7 @@ static int do_ief_defrag_one(struct defrag_context *dfx, dgrp_t group,
 	struct fmap_extent_cache *fec = NULL;
 
 	assert(rfh->flags & SP_FL_FMAP);
+	
 	fd = do_open_fhandle(dfx, rfh, O_RDWR);
 	if (fd < 0) {
 		/* Propably file was unlinked, renamed "
@@ -2156,6 +2195,12 @@ static int do_ief_defrag_one(struct defrag_context *dfx, dgrp_t group,
 	defrag_fadvise(fd, 0 , eof_lblk << dfx->blocksize_bits, 1);
 
 	ret = do_defrag_one(dfx, fd, &st, fec, &fest, eof_lblk, donor);
+
+	if (debug_flag & (DBG_RT| DBG_IEF))
+		printf("%s process inode %lu flags:%x, ret:%d\n",
+		       __func__, st.st_ino, rfh->flags, ret);
+
+
 	if (!ret) {
 		dfx->group[group]->ief_inodes++;
 		dfx->group[group]->ief_blocks += st.st_size >> dfx->blocksize_bits;
