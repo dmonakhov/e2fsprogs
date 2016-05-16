@@ -242,6 +242,7 @@ struct fmap_extent_cache
 {
 	unsigned fec_size;	/* map array size */
 	unsigned fec_extents;	/* number of valid entries */
+	struct fmap_extent *fec_xattr;
 	struct fmap_extent fec_map[];
 };
 
@@ -252,6 +253,9 @@ struct fmap_extent_stat
 	unsigned group; /* Number of groups, counter is speculative */
 	unsigned local_ex; /* Number of extents from  the same group as inode */
 	unsigned local_sz; /* Total len of local extents */
+	unsigned nr_idx; /* Number of index blocks */
+	__u64    xattr; /* xattr phys block */
+
 };
 
 /* Used space and integral inode usage stats */
@@ -750,9 +754,10 @@ static int __get_inode_fiemap(struct defrag_context *dfx, int fd,
 		(*fec)->fec_size = DEFAULT_FMAP_CACHE_SZ;
 		(*fec)->fec_extents = 0;
 	}
-	if (fest)
+	if (fest) {
 		memset(fest, 0 , sizeof(*fest));
-
+		fest->nr_idx = st->st_blocks >> (blksz_log - 9);
+	}
 	ext_buf = fiemap_buf->fm_extents;
 	memset(fiemap_buf, 0, fie_buf_size);
 	fiemap_buf->fm_length = FIEMAP_MAX_OFFSET;
@@ -791,6 +796,12 @@ static int __get_inode_fiemap(struct defrag_context *dfx, int fd,
 					fest->group++;
 					prev_blk_grp = blk_grp;
 				}
+				/* We are work on livefs so race is possible */
+				if (fest->nr_idx < len) {
+					ret = -1;
+					goto out;
+				}
+					fest->nr_idx -= len;
 			}
 
 			if ((*fec)->fec_extents && lblk == lblk_last && pblk == pblk_last) {
@@ -834,12 +845,36 @@ static int __get_inode_fiemap(struct defrag_context *dfx, int fd,
 		 */
 	} while (fiemap_buf->fm_mapped_extents == EXTENT_MAX_COUNT &&
 		 !(ext_buf[EXTENT_MAX_COUNT-1].fe_flags & FIEMAP_EXTENT_LAST));
+
+	/* get xattr block */
+	fiemap_buf->fm_flags |= FIEMAP_FLAG_XATTR;
+	fiemap_buf->fm_start = 0;
+	memset(ext_buf, 0, ext_buf_size);
+	ret = ioctl(fd, FS_IOC_FIEMAP, fiemap_buf);
+	if (ret < 0 || fiemap_buf->fm_mapped_extents == 0) {
+		if (debug_flag & DBG_FIEMAP) {
+			fprintf(stderr, "%s: Can't get xattr info for"
+				" inode:%ld ret:%d mapped:%d\n",
+				__func__, st->st_ino, ret,
+				fiemap_buf->fm_mapped_extents);
+		}
+		goto out;
+	}
+	if (!(ext_buf[0].fe_flags & FIEMAP_EXTENT_DATA_INLINE)) {
+		fest->xattr = ext_buf[i].fe_physical >> blksz_log;
+		if (fest->nr_idx)
+			ret = -1;
+
+		fest->nr_idx--;
+	}
 out:
 	/////////////FIXME:DEBUG
-	if (debug_flag & DBG_FIEMAP && fest)
-		printf("%s fmap stat ino:%ld hole:%d frag:%d local_ex:%d local_sz:%d group:%d\n",
+	if ((debug_flag & DBG_FIEMAP) && fest)
+		printf("%s fmap stat ino:%ld hole:%d frag:%d local_ex:%d "
+		       "local_sz:%d group:%d nr_idx:%u xattr:%lld ret:%d\n",
 		       __func__, st->st_ino, fest->hole, fest->frag,
-		       fest->local_ex, fest->local_sz, fest->group);
+		       fest->local_ex, fest->local_sz, fest->group, fest->nr_idx,
+		       fest->xattr, ret);
 
 	free(fiemap_buf);
 
@@ -1134,7 +1169,6 @@ static int scan_inode_pass3(struct defrag_context *dfx, int fd,
 		ret = do_iaf_defrag_one(dfx, dirfd, name, stat, fec, &fest);
 		if (!ret)
 			goto out;
-		
 	}
 
 	if (stat->st_mtime  < older_than)
@@ -1916,7 +1950,7 @@ static int prepare_donor(struct defrag_context *dfx, dgrp_t group,
 		printf("%s grp:%u donor_fd:%d blocks:%llu frag:%u\n",
 		       __func__, group, donor->fd, blocks, max_frag);
 	}
-	assert(blocks);
+	assert(blocks && max_frag);
 
 	/* First try to reuse existing donor if available */
 	if (donor->fd != -1) {
@@ -1954,22 +1988,27 @@ static int check_iaf(struct defrag_context *dfx, struct stat64 *stat,
 	__u64 eof_lblk;
 	//// FIXME free_space_average should be tunable
 	__u64 free_space_average = 64;
+	__u32 meta_blocks;
 	int ret  = 1;
 
 	if (!S_ISREG(stat->st_mode))
 		ret = 0;
-	if (fec->fec_extents < 2)
-		ret = 0;
+	if (fec->fec_extents < 2) {
+		/*
+		 * Older kernels can not collapse tree depth to zero for flat inodes
+		 * Let's fix it by relocating it once again
+		 */
+		if (fest->nr_idx == 0)
+			ret = 0;
+	}
 	if (fest->hole)
 		ret = 0;
-
 
 	eof_lblk = fec->fec_map[fec->fec_extents -1].lblk +
 		fec->fec_map[fec->fec_extents -1].len;
 
 	if (eof_lblk / fest->frag > free_space_average)
 		ret = 0;
-
 
 	if (debug_flag & DBG_RT)
 		printf("%s ino:%ld frag:%d eof_blk:%lld free_space_aver:%d ret:%d\n",
@@ -2055,7 +2094,7 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 	__u64 eof_lblk = fec->fec_map[fec->fec_extents -1].lblk +
 		fec->fec_map[fec->fec_extents -1].len;
 
-	assert(fest->frag >= 2);
+	assert(fest->frag >= 2 || fest->nr_idx);
 	ret  = 0;
 
 	/* Need to reopen file for RW */
@@ -2088,6 +2127,8 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 	 * FIXME: This should be tunable
 	 */
 	force_local = eof_lblk < 4;
+	if (!fest->local_ex)
+		force_local = 0;
 
 	if (debug_flag & (DBG_SCAN|DBG_IAF)) {
 		int i;
@@ -2100,7 +2141,8 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 			       fec->fec_map[i].pblk);
 	}
 
-	ret = prepare_donor(dfx, ino_grp, &donor, eof_lblk, force_local, fest->frag / 2);
+	ret = prepare_donor(dfx, ino_grp, &donor, eof_lblk, force_local,
+			    (fest->nr_idx + fest->frag) / 2);
 	if (ret) {
 		if (debug_flag & (DBG_SCAN|DBG_IAF))
 			fprintf(stderr, "%s: group:%u Can not allocate donor"
