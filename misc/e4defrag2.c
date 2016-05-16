@@ -1830,6 +1830,7 @@ static int do_find_donor(struct defrag_context *dfx, dgrp_t group,
 	int dir, i, ret = 0;
 	struct stat64 st;
 	dgrp_t donor_grp;
+	int dir_retries = 3;
 	unsigned char *raw_fh = dfx->group[group]->dir_rawh;
 	const char *dfname = ".e4defrag2_donor.tmp";
 
@@ -1896,7 +1897,7 @@ static int do_find_donor(struct defrag_context *dfx, dgrp_t group,
 	try_next:
 		close(dir);
 		close_donor(donor);
-		if (ret)
+		if (ret || !dir_retries--)
 			return -1;
 	}
 
@@ -1934,7 +1935,7 @@ static int prepare_donor(struct defrag_context *dfx, dgrp_t group,
 		return -1;
 
 	/* Sequentially search groups and create first available */
-	for (i = 0; i < nr_groups; i++) {
+	for (i = 1; i < 16; i++) {
 		if (dfx->group[(group + i) % nr_groups]) {
 			ret = do_find_donor(dfx, (group + i) % nr_groups,
 					    donor, blocks, 0, max_frag);
