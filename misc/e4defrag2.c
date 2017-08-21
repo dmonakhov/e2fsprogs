@@ -1124,7 +1124,7 @@ static void group_add_dircache(struct defrag_context *dfx, int dirfd, struct sta
 		return;
 	}
 	if (debug_flag & DBG_FS)
-		printf("%s group:%d cache_idx:%d inode:%d\n", __func__, grp, stat->st_ino,
+		printf("%s group:%d cache_idx:%lu inode:%d\n", __func__, grp, stat->st_ino,
 		       dfx->group[grp]->dir_cached);
 
 	memcpy(dfx->group[grp]->dir_rawh +
@@ -1255,7 +1255,7 @@ static int scan_inode_pass3(struct defrag_context *dfx, int fd,
 		}
 		if (debug_flag & DBG_SCAN && ief_blocks != size_blk)
 			printf("%s ENTER %lu to IEF set ief:%lld "
-			       "size_blk:%lld used_blk:%lld fl:%lx\n",
+			       "size_blk:%lld used_blk:%lld fl:%x\n",
 			       __func__, stat->st_ino, ief_blocks,
 			       size_blk, used_blk, ino_flags);
 
@@ -1711,7 +1711,7 @@ static void pass3_prep(struct defrag_context *dfx)
 				clusters_to_move++;
 			}
 			if (debug_flag & DBG_CLUSTER)
-				printf("Cluster %lld %lld] group:%ld stats "
+				printf("Cluster %lld %lld] group:%u stats "
 				       "{count:%d used:%d good:%d found:%d "
 				       "mdata:%u ief:%d force_reloc:%d}\n",
 				       prev_cluster,
@@ -1885,9 +1885,9 @@ static int do_find_donor(struct defrag_context *dfx, dgrp_t group,
 		if(dir < 0) {
 			if (debug_flag & DBG_SCAN)
 				fprintf(stderr, "%s: Can not open parent handle for "
-					"grp:%d cache_id:%d inode:%d fid[0]\n"
+					"grp:%d cache_id:%u inode:%u fid[0]:%d\n"
 					", %m\n", __func__, group, i,
-					dfx->group[group]->dir_ino,
+					dfx->group[group]->dir_ino[i],
 					((int*)raw_fh)[0]);
 			continue;
 		}
@@ -2015,7 +2015,7 @@ static int check_iaf(struct stat64 *stat,
 		ret = 0;
 
 	if (debug_flag & DBG_RT)
-		printf("%s ino:%ld frag:%d eof_blk:%lld free_space_aver:%d ret:%d\n",
+		printf("%s ino:%ld frag:%llu eof_blk:%u free_space_aver:%llu ret:%d\n",
 		       __FUNCTION__, stat->st_ino, eof_lblk, fest->frag,
 		       free_space_average, ret);
 
