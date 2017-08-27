@@ -1337,9 +1337,6 @@ static int call_defrag(int fd, int donor_fd, const char *file,
 		defraged_ret =
 			ioctl(fd, EXT4_IOC_MOVE_EXT, &move_data);
 
-		printf("%s:IOCTL ret:%d o_start:%lld d_start:%lld len:%ld moved:%lld\n", __FUNCTION__,
-		       defraged_ret, move_data.orig_start, move_data.donor_start,
-		       move_data.len, move_data.moved_len);
 		/* Free pages */
 		ret = defrag_fadvise(fd, move_data, vec, page_num);
 		if (vec) {

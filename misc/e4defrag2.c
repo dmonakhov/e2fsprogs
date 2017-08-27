@@ -401,7 +401,7 @@ static inline __u64 dfx_sz2b(struct defrag_context *dfx, __u64 size)
 	return (size + (1 << dfx->blocksize_bits) -1) >> dfx->blocksize_bits;
 }
 
-void df_show_stats()
+void df_show_stats(void)
 {
 	printf("Inodes  scanned:\t\t%llu \n", dfstat_scanned_inodes);
 	printf("Directories  scanned:\t\t%llu \n", dfstat_scanned_directories);
@@ -663,7 +663,7 @@ static errcode_t alloc_spextent(__u64 start, __u32 count, struct spextent **sptr
 	return 0;
 }
 
-static void fmap_csum_init(ext2_filsys fs, struct stat64 *st,  __u32 *crc)
+static void fmap_csum_init(struct stat64 *st,  __u32 *crc)
 {
 	*crc = ext2fs_crc32c_le(0xdeadbeef, (unsigned char *)&st->st_ino, sizeof(st->st_ino));
 	*crc = ext2fs_crc32c_le(*crc, (unsigned char *)&st->st_size, sizeof(st->st_size));
@@ -889,7 +889,7 @@ static inline int get_inode_fiemap(struct defrag_context *dfx, int fd,
 	return __get_inode_fiemap(dfx, fd, st, blksz_log, FIEMAP_EXTENT_UNWRITTEN,
 				  fec, fest);
 }
-static int check_iaf(struct defrag_context *dfx, struct stat64 *stat,
+static int check_iaf(struct stat64 *stat,
 		     struct fmap_extent_cache *fec, struct fmap_extent_stat *fest);
 
 static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *name,
@@ -992,13 +992,18 @@ free_fh:
 static int scan_inode_pass1(struct defrag_context *dfx, int fd,
 			    struct stat64 *stat, int dirfd, const char *name)
 {
-	int i, ret = 0;
+	int ret = 0;
+	unsigned i;
 	unsigned is_old = 0;
 	unsigned is_rdonly = 0;
 	struct fmap_extent_stat fest;
 	struct fmap_extent_cache *fec = NULL;
 	struct spextent *se;
 	dgrp_t ino_grp = e4d_group_of_ino(dfx, stat->st_ino);
+
+	/* deliberately unused */
+	(void)dirfd;
+	(void)name;
 
 	/*
 	 * From defragmentation point of view, both a readonly inode and
@@ -1090,7 +1095,8 @@ out:
 static void group_add_dircache(struct defrag_context *dfx, int dirfd, struct stat64 *stat, const char *name)
 {
 	int mnt;
-	int i,ret;
+	int ret;
+	unsigned i;
 	struct file_handle *fhp = NULL;
 	dgrp_t grp = e4d_group_of_ino(dfx, stat->st_ino);
 
@@ -1118,7 +1124,7 @@ static void group_add_dircache(struct defrag_context *dfx, int dirfd, struct sta
 		return;
 	}
 	if (debug_flag & DBG_FS)
-		printf("%s group:%d cache_idx:%d inode:%d\n", __func__, grp, stat->st_ino,
+		printf("%s group:%d cache_idx:%lu inode:%d\n", __func__, grp, stat->st_ino,
 		       dfx->group[grp]->dir_cached);
 
 	memcpy(dfx->group[grp]->dir_rawh +
@@ -1158,7 +1164,7 @@ static int scan_inode_pass3(struct defrag_context *dfx, int fd,
 		goto out;
 
 	/* IAF inodes can be fixed independently */
-	if (check_iaf(dfx, stat, fec, &fest)) {
+	if (check_iaf(stat, fec, &fest)) {
 		struct stat64 dst;
 
 		ret = fstat64(dirfd, &dst);
@@ -1183,7 +1189,7 @@ static int scan_inode_pass3(struct defrag_context *dfx, int fd,
 	 * At this point it is too expensive to store fiemap cache for each
 	 * IEF candidate, store it's fiemap csum
 	 */
-	fmap_csum_init(dfx->fs, stat, &csum);
+	fmap_csum_init(stat, &csum);
 
 	for (i = 0; i < fec->fec_extents; i++) {
 		struct spextent *se;
@@ -1249,7 +1255,7 @@ static int scan_inode_pass3(struct defrag_context *dfx, int fd,
 		}
 		if (debug_flag & DBG_SCAN && ief_blocks != size_blk)
 			printf("%s ENTER %lu to IEF set ief:%lld "
-			       "size_blk:%lld used_blk:%lld fl:%lx\n",
+			       "size_blk:%lld used_blk:%lld fl:%x\n",
 			       __func__, stat->st_ino, ief_blocks,
 			       size_blk, used_blk, ino_flags);
 
@@ -1352,7 +1358,7 @@ static int walk_subtree(struct defrag_context * dfx, int fd, proc_inode_t scan_f
 	int err = 0;
 	int bufsz;
 	int offset;
-	int space;
+	size_t space;
 
 	if (fstat64(fd, &stb)) {
 		fprintf(stderr, "%s fstat64: %m\n", __func__);
@@ -1464,7 +1470,8 @@ static int ief_defrag_prep_one(struct defrag_context *dfx, dgrp_t group,
 			       int fd, struct rb_fhandle *fhandle,
 			       struct stat64 *stat)
 {
-	int i, ret;
+	int ret;
+	unsigned i;
 	__u32 csum;
 	struct fmap_extent_cache *fec = NULL;
 	struct fmap_extent_stat fest;
@@ -1477,7 +1484,7 @@ static int ief_defrag_prep_one(struct defrag_context *dfx, dgrp_t group,
 		goto changed;
 
 	if (fhandle->flags & SP_FL_CSUM) {
-		fmap_csum_init(dfx->fs, stat, &csum);
+		fmap_csum_init(stat, &csum);
 		for (i = 0; i < fec->fec_extents; i++)
 			fmap_csum_ext(fec->fec_map + i, &csum);
 		if (fhandle->csum != csum)
@@ -1533,7 +1540,6 @@ changed:
 static void pass1(struct defrag_context *dfx)
 {
 	unsigned long i;
-	blk64_t	first_block, last_block;
 	char *block_bitmap = NULL;
 	int		block_nbytes;
 	blk64_t		blk_itr = EXT2FS_B2C(dfx->fs, dfx->fs->super->s_first_data_block);
@@ -1550,8 +1556,6 @@ static void pass1(struct defrag_context *dfx)
 	block_bitmap = malloc(block_nbytes);
 	CHKMEM(block_bitmap, exit(1));
 
-	first_block = dfx->fs->super->s_first_data_block;
-
 	if (verbose)
 		printf("Pass1:  Scanning bitmaps\n");
 
@@ -1564,8 +1568,6 @@ static void pass1(struct defrag_context *dfx)
 			blk_itr += dfx->fs->super->s_clusters_per_group;
 			continue;
 		}
-		first_block = ext2fs_group_first_block2(dfx->fs, i);
-		last_block = ext2fs_group_last_block2(dfx->fs, i);
 
 		if (block_bitmap) {
 			retval = ext2fs_get_block_bitmap_range2(dfx->fs->block_map,
@@ -1709,7 +1711,7 @@ static void pass3_prep(struct defrag_context *dfx)
 				clusters_to_move++;
 			}
 			if (debug_flag & DBG_CLUSTER)
-				printf("Cluster %lld %lld] group:%ld stats "
+				printf("Cluster %lld %lld] group:%u stats "
 				       "{count:%d used:%d good:%d found:%d "
 				       "mdata:%u ief:%d force_reloc:%d}\n",
 				       prev_cluster,
@@ -1861,7 +1863,8 @@ static int do_find_donor(struct defrag_context *dfx, dgrp_t group,
 			  struct donor_info *donor, __u64 blocks,
 			  unsigned force_local, unsigned max_frag)
 {
-	int dir, i, ret = 0;
+	int dir, ret = 0;
+	unsigned i;
 	struct stat64 st;
 	dgrp_t donor_grp;
 	int dir_retries = 3;
@@ -1882,9 +1885,9 @@ static int do_find_donor(struct defrag_context *dfx, dgrp_t group,
 		if(dir < 0) {
 			if (debug_flag & DBG_SCAN)
 				fprintf(stderr, "%s: Can not open parent handle for "
-					"grp:%d cache_id:%d inode:%d fid[0]\n"
+					"grp:%d cache_id:%u inode:%u fid[0]:%d\n"
 					", %m\n", __func__, group, i,
-					dfx->group[group]->dir_ino,
+					dfx->group[group]->dir_ino[i],
 					((int*)raw_fh)[0]);
 			continue;
 		}
@@ -1942,7 +1945,8 @@ static int prepare_donor(struct defrag_context *dfx, dgrp_t group,
 			 struct donor_info *donor, __u64 blocks,
 			 unsigned force_local, unsigned max_frag)
 {
-	int i, ret;
+	int ret;
+	unsigned i;
 	dgrp_t nr_groups = dfx->fs->group_desc_count >> dfx->ief_reloc_grp_log;
 
 
@@ -1982,7 +1986,7 @@ static int prepare_donor(struct defrag_context *dfx, dgrp_t group,
 }
 
 /* FIXME: This check definitely should be smarter */
-static int check_iaf(struct defrag_context *dfx, struct stat64 *stat,
+static int check_iaf(struct stat64 *stat,
 		  struct fmap_extent_cache *fec, struct fmap_extent_stat *fest)
 {
 	__u64 eof_lblk;
@@ -2011,7 +2015,7 @@ static int check_iaf(struct defrag_context *dfx, struct stat64 *stat,
 		ret = 0;
 
 	if (debug_flag & DBG_RT)
-		printf("%s ino:%ld frag:%d eof_blk:%lld free_space_aver:%d ret:%d\n",
+		printf("%s ino:%ld frag:%llu eof_blk:%u free_space_aver:%llu ret:%d\n",
 		       __FUNCTION__, stat->st_ino, eof_lblk, fest->frag,
 		       free_space_average, ret);
 
@@ -2020,7 +2024,7 @@ static int check_iaf(struct defrag_context *dfx, struct stat64 *stat,
 }
 
 static int do_defrag_one(struct defrag_context *dfx, int fd,  struct stat64 *stat,
-			 struct fmap_extent_cache *fec, struct fmap_extent_stat *fest,
+			 struct fmap_extent_cache *fec,
 			 __u64 eof_lblk, struct donor_info *donor)
 {
 	int ret, retry;
@@ -2131,7 +2135,7 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 		force_local = 0;
 
 	if (debug_flag & (DBG_SCAN|DBG_IAF)) {
-		int i;
+		unsigned i;
 		printf("%s ENTER inode:%ld eof:%llu force_local:%d frag:%u local_ex:%u\n",
 		       __func__, stat->st_ino, (unsigned long long) eof_lblk,
 		       force_local, fest->frag, fest->local_ex);
@@ -2151,7 +2155,7 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 	}
 
 	if (debug_flag & (DBG_SCAN|DBG_IAF)) {
-		int i;
+		unsigned i;
 		printf("%s FOUND DONOR inode:%ld eof:%llu force_local:%d frag:%u local_ex:%u\n",
 		       __func__, stat->st_ino, (unsigned long long) eof_lblk,
 		       force_local, fest->frag, fest->local_ex);
@@ -2166,7 +2170,7 @@ static int do_iaf_defrag_one(struct defrag_context *dfx, int dirfd, const char *
 
 	defrag_fadvise(fd, 0 , eof_lblk << dfx->blocksize_bits, 1);
 
-	ret = do_defrag_one(dfx, fd, stat, fec, fest, eof_lblk, &donor);
+	ret = do_defrag_one(dfx, fd, stat, fec, eof_lblk, &donor);
 	if (!ret) {
 		dfstat_iaf_defragmented++;
 		dfstat_iaf_defragmented_sz += eof_lblk;
@@ -2237,7 +2241,7 @@ static int do_ief_defrag_one(struct defrag_context *dfx, dgrp_t group,
 
 	defrag_fadvise(fd, 0 , eof_lblk << dfx->blocksize_bits, 1);
 
-	ret = do_defrag_one(dfx, fd, &st, fec, &fest, eof_lblk, donor);
+	ret = do_defrag_one(dfx, fd, &st, fec, eof_lblk, donor);
 
 	if (debug_flag & (DBG_RT| DBG_IEF))
 		printf("%s process inode %lu flags:%x, ret:%d\n",
@@ -2554,7 +2558,7 @@ int main(int argc, char *argv[])
 	int quality = 700;
 	dgrp_t nr_grp;
 	int flex_bg = 0;
-	unsigned long long min_frag_size = 0;
+	blksize_t min_frag_size = 0;
 	memset(&dfx, 0, sizeof(dfx));
 	add_error_table(&et_ext2_error_table);
 	gettimeofday(&time_start, 0);
@@ -2706,7 +2710,7 @@ int main(int argc, char *argv[])
 
 	gettimeofday(&time_end, 0);
 	if (mem_usage)
-		df_show_stats(&dfx);
+		df_show_stats();
 
 	close(dfx.root_fd);
 	close_device(device_name, dfx.fs);
